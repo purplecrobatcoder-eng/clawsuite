@@ -598,6 +598,32 @@ export function DashboardScreen() {
     void heroCostQuery.refetch()
   }, [heroCostQuery])
 
+  const costTrendPct = useMemo(() => {
+    const points = Array.isArray(costTimeseriesQuery.data)
+      ? [...costTimeseriesQuery.data]
+      : []
+    if (points.length < 2) return undefined
+
+    points.sort((left, right) => left.date.localeCompare(right.date))
+    const latest = points[points.length - 1]
+    const previous = points[points.length - 2]
+    if (!latest || !previous) return undefined
+    if (previous.amount <= 0) return undefined
+    return ((latest.amount - previous.amount) / previous.amount) * 100
+  }, [costTimeseriesQuery.data])
+
+  const latestCostAmount = useMemo(() => {
+    const points = Array.isArray(costTimeseriesQuery.data)
+      ? [...costTimeseriesQuery.data]
+      : []
+    if (points.length === 0) return null
+
+    points.sort((left, right) => left.date.localeCompare(right.date))
+    const latest = points[points.length - 1]
+    if (!latest) return null
+    return Math.max(0, latest.amount)
+  }, [costTimeseriesQuery.data])
+
   const metricItems = useMemo<Array<WidgetGridItem>>(
     function buildMetricItems() {
       return [
@@ -607,10 +633,12 @@ export function DashboardScreen() {
           node: (
             <MetricsWidget
               title="Sessions"
-              value={`${systemStatus.totalSessions}`}
+              value={systemStatus.totalSessions}
               subtitle="Total sessions"
               icon={Activity01Icon}
-              color="blue"
+              accent="cyan"
+              description="Total sessions observed by the gateway."
+              rawValue={`${systemStatus.totalSessions} sessions`}
             />
           ),
         },
@@ -620,10 +648,12 @@ export function DashboardScreen() {
           node: (
             <MetricsWidget
               title="Active Agents"
-              value={`${systemStatus.activeAgents}`}
+              value={systemStatus.activeAgents}
               subtitle="Currently active"
               icon={UserGroupIcon}
-              color="orange"
+              accent="orange"
+              description="Agents currently running or processing work."
+              rawValue={`${systemStatus.activeAgents} active agents`}
             />
           ),
         },
@@ -633,12 +663,20 @@ export function DashboardScreen() {
           node: (
             <MetricsWidget
               title="Cost"
-              value={heroCostQuery.isError ? 'Failed to load' : (heroCostQuery.data ?? '—')}
+              value={heroCostQuery.isError ? '—' : (heroCostQuery.data ?? '—')}
               subtitle="Billing period"
               icon={ChartLineData02Icon}
-              color="emerald"
+              accent="emerald"
               isError={heroCostQuery.isError}
               onRetry={retryHeroCost}
+              trendPct={heroCostQuery.isError ? undefined : costTrendPct}
+              trendLabel={costTrendPct === undefined ? undefined : 'vs prev day'}
+              description="Estimated spend from gateway cost telemetry."
+              rawValue={
+                latestCostAmount === null
+                  ? heroCostQuery.data ?? 'Unavailable'
+                  : formatCurrency(latestCostAmount)
+              }
             />
           ),
         },
@@ -651,7 +689,9 @@ export function DashboardScreen() {
               value={formatUptime(systemStatus.uptimeSeconds)}
               subtitle="Gateway runtime"
               icon={Timer02Icon}
-              color="violet"
+              accent="violet"
+              description="Time since the active gateway session started."
+              rawValue={`${systemStatus.uptimeSeconds}s`}
             />
           ),
         },
@@ -660,7 +700,9 @@ export function DashboardScreen() {
     [
       heroCostQuery.data,
       heroCostQuery.isError,
+      latestCostAmount,
       retryHeroCost,
+      costTrendPct,
       systemStatus.activeAgents,
       systemStatus.totalSessions,
       systemStatus.uptimeSeconds,
@@ -926,7 +968,7 @@ export function DashboardScreen() {
   return (
     <>
       <main
-        className="h-full overflow-x-hidden overflow-y-auto bg-primary-100/45 px-3 pt-10 pb-[calc(env(safe-area-inset-bottom)+6rem)] text-primary-900 md:px-6 md:pt-8 md:pb-8"
+        className="h-full overflow-x-hidden overflow-y-auto bg-primary-100/45 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+6rem)] text-primary-900 md:px-6 md:pt-8 md:pb-8"
       >
         <section className="mx-auto w-full max-w-[1600px]">
           <header className="relative z-20 mb-3 rounded-xl border border-primary-200 bg-primary-50/95 px-3 py-2 shadow-sm md:mb-5 md:px-5 md:py-3">
@@ -1134,8 +1176,8 @@ export function DashboardScreen() {
 
           <div>
             {isMobile ? (
-              <div className="flex flex-col gap-6">
-                <div className="space-y-2">
+              <div className="flex flex-col gap-3">
+                <div className="space-y-1.5">
                   <NowCard
                     gatewayConnected={systemStatus.gateway.connected}
                     activeAgents={systemStatus.activeAgents}
@@ -1143,7 +1185,7 @@ export function DashboardScreen() {
                   />
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {dashboardSignalChips.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
                       {dashboardSignalChips.map((chip) => (
@@ -1161,10 +1203,10 @@ export function DashboardScreen() {
                       ))}
                     </div>
                   ) : null}
-                  <WidgetGrid items={metricItems} className="gap-2" />
+                  <WidgetGrid items={metricItems} className="gap-3" />
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {mobileDeepSections.map((section, visibleIndex) => {
                     const canMoveUp = visibleIndex > 0
                     const canMoveDown =

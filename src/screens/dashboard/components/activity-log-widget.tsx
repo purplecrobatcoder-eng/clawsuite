@@ -21,6 +21,14 @@ type ActivityPreviewRow = {
   timestamp: number
 }
 
+type ParsedActivityItem = {
+  id: string
+  title: string
+  subtitle: string
+  timeAgo: string
+  statusIcon: 'success' | 'warning' | 'error' | 'info'
+}
+
 function readString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -202,6 +210,46 @@ function toPreviewRow(event: ActivityEvent): ActivityPreviewRow | null {
   }
 }
 
+function parseActivityItem(event: ActivityEvent): ParsedActivityItem {
+  const parsed = toPreviewRow(event)
+  const timeAgo = formatRelativeTime(event.timestamp)
+  const fallbackSubtitle = toFriendlySource(event.source)
+
+  if (!parsed) {
+    return {
+      id: event.id,
+      title: 'New activity received',
+      subtitle: fallbackSubtitle,
+      timeAgo,
+      statusIcon: event.level === 'error' || event.type === 'error' ? 'error' : 'info',
+    }
+  }
+
+  const statusIcon: ParsedActivityItem['statusIcon'] =
+    event.level === 'error' || event.type === 'error'
+      ? 'error'
+      : parsed.icon === '✓'
+        ? 'success'
+        : parsed.icon === '⚠'
+          ? 'warning'
+          : 'info'
+
+  return {
+    id: parsed.id,
+    title: parsed.summary,
+    subtitle: parsed.sourceLabel,
+    timeAgo: formatRelativeTime(parsed.timestamp),
+    statusIcon,
+  }
+}
+
+function activityStatusDotClass(statusIcon: ParsedActivityItem['statusIcon']): string {
+  if (statusIcon === 'success') return 'bg-emerald-500'
+  if (statusIcon === 'warning') return 'bg-amber-500'
+  if (statusIcon === 'error') return 'bg-red-500'
+  return 'bg-primary-400'
+}
+
 export function ActivityLogWidget({
   draggable: _draggable = false,
   onRemove,
@@ -231,6 +279,22 @@ export function ActivityLogWidget({
     [events],
   )
 
+  const mobileRows = useMemo(
+    function buildMobileRows() {
+      const rows: Array<ParsedActivityItem> = []
+
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        const event = events[index]
+        if (!event) continue
+        rows.push(parseActivityItem(event))
+        if (rows.length >= 4) break
+      }
+
+      return rows
+    },
+    [events],
+  )
+
   return (
     <WidgetShell
       size="large"
@@ -238,7 +302,7 @@ export function ActivityLogWidget({
       icon={Activity01Icon}
       action={
         <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-100/70 px-2 py-0.5 text-[11px] font-medium text-primary-500 tabular-nums">
-          {previewRows.length}
+          {Math.max(previewRows.length, mobileRows.length)}
         </span>
       }
       onRemove={onRemove}
@@ -264,40 +328,71 @@ export function ActivityLogWidget({
         </span>
       </div>
 
-      {isLoading && previewRows.length === 0 ? (
+      {isLoading && mobileRows.length === 0 ? (
         <div className="rounded-lg border border-primary-200 bg-primary-100/45 px-3 py-3 text-sm text-primary-600">
           Loading activity…
         </div>
-      ) : previewRows.length === 0 ? (
+      ) : mobileRows.length === 0 ? (
         <div className="rounded-lg border border-primary-200 bg-primary-100/45 px-3 py-3 text-sm text-primary-600">
           No activity events yet
         </div>
       ) : (
-        <div className="space-y-1.5">
-          {previewRows.map(function renderRow(row) {
-            return (
-              <article
-                key={row.id}
-                className="rounded-lg border border-primary-200/80 bg-primary-50/70 px-3 py-2"
-              >
-                <div className="flex items-start gap-2">
-                  <span className={cn('mt-0.5 text-xs', row.iconClassName)}>
-                    {row.icon}
-                  </span>
+        <>
+          <div className="space-y-1.5 md:hidden">
+            {mobileRows.slice(0, 4).map(function renderMobileRow(row) {
+              return (
+                <article
+                  key={row.id}
+                  className="flex items-center gap-2 rounded-xl border border-white/30 bg-white/55 px-3 py-2 dark:border-white/10 dark:bg-neutral-900/45"
+                >
+                  <span
+                    className={cn(
+                      'size-2 shrink-0 rounded-full',
+                      activityStatusDotClass(row.statusIcon),
+                    )}
+                  />
                   <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 text-sm text-primary-700">
-                      <span className="font-semibold text-ink">{row.sourceLabel}</span>{' '}
-                      <span>{row.summary}</span>
+                    <p className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                      {row.title}
+                    </p>
+                    <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                      {row.subtitle}
                     </p>
                   </div>
-                  <span className="shrink-0 text-[11px] text-primary-400">
-                    {formatRelativeTime(row.timestamp)}
+                  <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">
+                    {row.timeAgo}
                   </span>
-                </div>
-              </article>
-            )
-          })}
-        </div>
+                </article>
+              )
+            })}
+          </div>
+
+          <div className="hidden space-y-1.5 md:block">
+            {previewRows.map(function renderRow(row) {
+              return (
+                <article
+                  key={row.id}
+                  className="rounded-lg border border-primary-200/80 bg-primary-50/70 px-3 py-2"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className={cn('mt-0.5 text-xs', row.iconClassName)}>
+                      {row.icon}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-sm text-primary-700">
+                        <span className="font-semibold text-ink">{row.sourceLabel}</span>{' '}
+                        <span>{row.summary}</span>
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-primary-400">
+                      {formatRelativeTime(row.timestamp)}
+                    </span>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        </>
       )}
 
       <div className="mt-2 flex justify-end">

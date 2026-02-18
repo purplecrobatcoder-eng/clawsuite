@@ -16,6 +16,7 @@ type ProviderUsage = {
 
 export type UsageMeterData = {
   usagePercent?: number
+  usageLimit?: number
   totalCost: number
   totalDirectCost: number
   totalUsage: number
@@ -135,8 +136,16 @@ function parseUsagePayload(payload: unknown): UsageMeterData {
         ? maxProviderPercent
         : undefined
 
+  const usageLimitRaw =
+    readNumber(totalSource.limit) ||
+    readNumber(totalSource.max) ||
+    readNumber(totalSource.quota) ||
+    readNumber(totalSource.tokenLimit)
+  const usageLimit = usageLimitRaw > 0 ? usageLimitRaw : undefined
+
   return {
     usagePercent,
+    usageLimit,
     totalCost,
     totalDirectCost,
     totalUsage,
@@ -197,6 +206,55 @@ function formatUsd(amount: number): string {
   }).format(amount)
 }
 
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)))
+}
+
+type UsageProgress = {
+  percent: number | null
+  current: number
+  max: number | null
+}
+
+function resolveUsageProgress(data: UsageMeterData | null): UsageProgress {
+  if (!data) {
+    return {
+      percent: null,
+      current: 0,
+      max: null,
+    }
+  }
+
+  const current = Math.max(0, data.totalUsage)
+  const explicitMax = data.usageLimit && data.usageLimit > 0 ? data.usageLimit : null
+
+  if (typeof data.usagePercent === 'number' && Number.isFinite(data.usagePercent)) {
+    const percent = clampPercent(data.usagePercent)
+    const inferredMax =
+      percent > 0 ? Math.max(current, Math.round(current / (percent / 100))) : null
+
+    return {
+      percent,
+      current,
+      max: explicitMax ?? inferredMax,
+    }
+  }
+
+  if (explicitMax && explicitMax > 0) {
+    return {
+      percent: clampPercent((current / explicitMax) * 100),
+      current,
+      max: explicitMax,
+    }
+  }
+
+  return {
+    percent: null,
+    current,
+    max: null,
+  }
+}
+
 type UsageMeterWidgetProps = {
   draggable?: boolean
   onRemove?: () => void
@@ -219,26 +277,17 @@ export function UsageMeterWidget({
   const queryResult = usageQuery.data
   const usageData = queryResult?.kind === 'ok' ? queryResult.data : null
 
-  const usagePercent = useMemo(
-    function computeUsagePercent() {
-      const value = usageData?.usagePercent ?? 0
-      return Math.max(0, Math.min(100, Math.round(value)))
+  const usageProgress = useMemo(
+    function readUsageProgress() {
+      return resolveUsageProgress(usageData)
     },
-    [usageData?.usagePercent],
+    [usageData],
   )
 
-  const tokenLimit = useMemo(
-    function computeTokenLimit() {
-      if (!usageData) return 0
-      if (usagePercent <= 0) return usageData.totalUsage
-      return Math.max(usageData.totalUsage, Math.round(usageData.totalUsage / (usagePercent / 100)))
-    },
-    [usageData, usagePercent],
-  )
-
-  const subtitle = usageData
-    ? `${formatTokens(usageData.totalUsage)} / ${formatTokens(tokenLimit)} tokens`
-    : 'Usage unavailable'
+  const tokenSubtitle =
+    usageProgress.max !== null
+      ? `${formatTokens(usageProgress.current)} / ${formatTokens(usageProgress.max)} tokens`
+      : `${formatTokens(usageProgress.current)} tokens`
 
   return (
     <WidgetShell
@@ -246,7 +295,7 @@ export function UsageMeterWidget({
       title="Usage Meter"
       icon={ChartLineData02Icon}
       action={
-        <div className="inline-flex items-center gap-0.5 rounded-full border border-primary-200 bg-primary-100/70 p-0.5 text-[10px]">
+        <div className="hidden items-center gap-0.5 rounded-full border border-primary-200 bg-primary-100/70 p-0.5 text-[10px] md:inline-flex">
           {(['tokens', 'cost'] as const).map((tab) => (
             <button
               key={tab}
@@ -284,34 +333,95 @@ export function UsageMeterWidget({
           Loading usage data…
         </div>
       ) : (
-        <div className="space-y-2.5">
-          <div>
-            <p className="font-mono text-2xl font-bold leading-none text-ink tabular-nums">
-              {usagePercent}%
+        <>
+          <div className="space-y-3 md:hidden">
+            <p className="text-[11px] font-medium tracking-wide text-neutral-500 dark:text-neutral-400">
+              Usage
             </p>
-            <p className="mt-1 text-xs text-primary-500">Usage</p>
+            <p className="text-3xl font-semibold leading-none text-neutral-900 dark:text-neutral-50">
+              {usageProgress.percent === null ? '—' : `${usageProgress.percent}%`}
+            </p>
+
+            <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200/60 dark:bg-neutral-800/60">
+              {usageProgress.percent === null ? (
+                <div className="h-2 w-full rounded-full bg-[repeating-linear-gradient(45deg,rgba(16,185,129,0.2),rgba(16,185,129,0.2)_8px,rgba(16,185,129,0.4)_8px,rgba(16,185,129,0.4)_16px)]" />
+              ) : (
+                <div
+                  className="h-2 rounded-full bg-emerald-500/60 transition-[width] duration-500"
+                  style={{ width: `${usageProgress.percent}%` }}
+                />
+              )}
+            </div>
+
+            <div className="inline-flex rounded-full bg-neutral-100/70 p-1 dark:bg-neutral-800/50 gap-1">
+              {(['tokens', 'cost'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setView(tab)
+                  }}
+                  className={cn(
+                    'px-3 py-1 text-xs rounded-full transition-colors',
+                    view === tab
+                      ? 'bg-white shadow-sm dark:bg-neutral-900'
+                      : 'text-neutral-600 dark:text-neutral-300',
+                  )}
+                >
+                  {tab === 'tokens' ? 'Tokens' : 'Cost'}
+                </button>
+              ))}
+            </div>
+
+            {view === 'cost' ? (
+              <p className="text-xs text-neutral-600 dark:text-neutral-300">
+                {formatUsd(usageData.totalCost)} total • {formatUsd(usageData.totalDirectCost)} direct
+              </p>
+            ) : (
+              <div className="space-y-1">
+                <p className="text-xs text-neutral-600 dark:text-neutral-300">{tokenSubtitle}</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  In/Out {formatTokens(usageData.totalInputOutput)} • Cached{' '}
+                  {formatTokens(usageData.totalCached)}
+                </p>
+              </div>
+            )}
           </div>
 
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200/80 dark:bg-gray-700/70">
-            <div
-              className="h-1.5 rounded-full bg-orange-400 transition-[width] duration-500"
-              style={{ width: `${usagePercent}%` }}
-            />
+          <div className="hidden space-y-2.5 md:block">
+            <div>
+              <p className="font-mono text-2xl font-bold leading-none text-ink tabular-nums">
+                {usageProgress.percent ?? 0}%
+              </p>
+              <p className="mt-1 text-xs text-primary-500">Usage</p>
+            </div>
+
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200/80 dark:bg-gray-700/70">
+              {usageProgress.percent === null ? (
+                <div className="h-1.5 w-full rounded-full bg-[repeating-linear-gradient(45deg,rgba(251,146,60,0.2),rgba(251,146,60,0.2)_8px,rgba(251,146,60,0.4)_8px,rgba(251,146,60,0.4)_16px)]" />
+              ) : (
+                <div
+                  className="h-1.5 rounded-full bg-orange-400 transition-[width] duration-500"
+                  style={{ width: `${usageProgress.percent}%` }}
+                />
+              )}
+            </div>
+
+            <p className="text-xs text-primary-500">{tokenSubtitle}</p>
+
+            {view === 'cost' ? (
+              <p className="text-xs text-primary-600">
+                {formatUsd(usageData.totalDirectCost)} direct • {formatUsd(usageData.totalCost)} total
+              </p>
+            ) : (
+              <p className="text-xs text-primary-600">
+                In/Out {formatTokens(usageData.totalInputOutput)} • Cached{' '}
+                {formatTokens(usageData.totalCached)}
+              </p>
+            )}
           </div>
-
-          <p className="text-xs text-primary-500">{subtitle}</p>
-
-          {view === 'cost' ? (
-            <p className="text-xs text-primary-600">
-              {formatUsd(usageData.totalDirectCost)} direct • {formatUsd(usageData.totalCost)} total
-            </p>
-          ) : (
-            <p className="text-xs text-primary-600">
-              In/Out {formatTokens(usageData.totalInputOutput)} • Cached{' '}
-              {formatTokens(usageData.totalCached)}
-            </p>
-          )}
-        </div>
+        </>
       )}
     </WidgetShell>
   )

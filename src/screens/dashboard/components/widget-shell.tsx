@@ -46,7 +46,7 @@ export const WIDGET_SIZE_SPAN: Record<WidgetSize, string> = {
 
 /** Maps size → padding + min-height */
 const SIZE_STYLES: Record<WidgetSize, string> = {
-  small: 'p-3 min-h-[120px]',
+  small: 'p-4 md:p-3 min-h-[120px]',
   medium: 'p-4 min-h-[160px]',
   large: 'p-4 min-h-[260px]',
 }
@@ -93,7 +93,7 @@ export function WidgetShell({
         // Base glass card
         'group relative flex flex-col overflow-hidden rounded-2xl',
         'border border-white/30 dark:border-white/10',
-        'bg-white/60 dark:bg-gray-900/60 backdrop-blur-md',
+        'bg-white/60 dark:bg-neutral-900/50 md:dark:bg-gray-900/60 backdrop-blur-md',
         'shadow-sm transition-shadow',
         // Size
         SIZE_STYLES[size],
@@ -102,7 +102,7 @@ export function WidgetShell({
           'cursor-pointer',
           'hover:shadow-md',
           'active:scale-[0.97]',
-          'transition-[transform,box-shadow]',
+          'transition-transform duration-150',
           'select-none',
         ],
         // Edit mode jiggle
