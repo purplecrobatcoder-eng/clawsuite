@@ -4,7 +4,6 @@ import {
   ArrowUp02Icon,
   Chat01Icon,
   Home01Icon,
-  PuzzleIcon,
   Settings01Icon,
   UserMultipleIcon,
 } from '@hugeicons/core-free-icons'
@@ -54,13 +53,6 @@ const TABS: TabItem[] = [
     icon: Chat01Icon,
     to: '/chat/main',
     match: (p) => p.startsWith('/chat') || p === '/new' || p === '/',
-  },
-  {
-    id: 'skills',
-    label: 'Skills',
-    icon: PuzzleIcon,
-    to: '/skills',
-    match: (p) => p.startsWith('/skills'),
   },
   {
     id: 'settings',
@@ -145,7 +137,7 @@ export function MobileTabBar() {
         )}
         aria-label="Mobile navigation"
       >
-        <div className="mx-2 mb-0 grid grid-cols-5 gap-1 rounded-2xl border border-primary-200/60 px-1 py-1.5 shadow-[0_2px_20px_rgba(0,0,0,0.08)]">
+        <div className="mx-2 mb-0 grid grid-cols-4 gap-1 rounded-2xl border border-primary-200/60 px-1 py-1.5 shadow-[0_2px_20px_rgba(0,0,0,0.08)]">
           {TABS.map((tab) => {
             const isActive = tab.match(pathname)
             const isCenterChat = tab.id === 'chat'
