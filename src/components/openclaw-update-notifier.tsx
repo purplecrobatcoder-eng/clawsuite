@@ -60,6 +60,7 @@ export function OpenClawUpdateNotifier() {
         currentVersion: string
         latestVersion: string
         updateAvailable: boolean
+        installType?: 'git' | 'npm' | 'unknown'
       }>
     },
     refetchInterval: CHECK_INTERVAL_MS,
@@ -67,12 +68,12 @@ export function OpenClawUpdateNotifier() {
     retry: false,
   })
 
-  // Auto-update when enabled
+  // Auto-update when enabled (only for git installs)
   useEffect(() => {
-    if (autoUpdate && data?.updateAvailable && phase === 'idle') {
+    if (autoUpdate && data?.updateAvailable && data.installType !== 'npm' && phase === 'idle') {
       void handleUpdate()
     }
-  }, [autoUpdate, data?.updateAvailable])
+  }, [autoUpdate, data?.updateAvailable, data?.installType])
 
   const visible = shouldShowUpdateBanner(data, phase, dismissed)
 
@@ -240,12 +241,14 @@ export function OpenClawUpdateNotifier() {
                     ? `Reloading with v${data.latestVersion}...`
                     : isUpdating
                       ? 'Please wait...'
-                      : `v${data.currentVersion} → v${data.latestVersion}`}
+                      : data.installType === 'npm'
+                        ? `v${data.currentVersion} → v${data.latestVersion} · Run: npm i -g openclaw@latest`
+                        : `v${data.currentVersion} → v${data.latestVersion}`}
               </p>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              {(phase === 'idle' || phase === 'error') && (
+              {(phase === 'idle' || phase === 'error') && data.installType !== 'npm' && (
                 <button
                   type="button"
                   onClick={handleUpdate}

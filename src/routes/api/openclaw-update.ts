@@ -6,6 +6,7 @@ type VersionCheckResult = {
   currentVersion: string
   latestVersion: string
   updateAvailable: boolean
+  installType: 'git' | 'npm' | 'unknown'
 }
 
 let versionCache: { checkedAt: number; result: VersionCheckResult } | null = null
@@ -18,6 +19,7 @@ async function checkOpenClawVersion(): Promise<VersionCheckResult> {
   }
 
   let currentVersion = 'unknown'
+  let installType: 'git' | 'npm' | 'unknown' = 'unknown'
 
   // Try to get version from gateway status RPC
   try {
@@ -25,8 +27,11 @@ async function checkOpenClawVersion(): Promise<VersionCheckResult> {
     if (typeof statusResult?.version === 'string') {
       currentVersion = statusResult.version
     }
+    if (typeof statusResult?.installType === 'string') {
+      installType = statusResult.installType as 'git' | 'npm' | 'unknown'
+    }
   } catch {
-    // fallback: try reading from the openclaw CLI
+    // fallback below
   }
 
   if (currentVersion === 'unknown') {
@@ -39,6 +44,37 @@ async function checkOpenClawVersion(): Promise<VersionCheckResult> {
       }).trim()
     } catch {
       // Can't determine version
+    }
+  }
+
+  // Detect install type if gateway didn't tell us
+  if (installType === 'unknown') {
+    try {
+      const { execSync } = await import('node:child_process')
+      const clawPath = execSync('which openclaw', {
+        timeout: 5_000,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim()
+      if (clawPath.includes('node_modules')) {
+        installType = 'npm'
+      } else {
+        const { existsSync } = await import('node:fs')
+        const { dirname, join } = await import('node:path')
+        let dir = dirname(clawPath)
+        for (let i = 0; i < 5; i++) {
+          if (existsSync(join(dir, '.git'))) {
+            installType = 'git'
+            break
+          }
+          const parent = dirname(dir)
+          if (parent === dir) break
+          dir = parent
+        }
+        if (installType === 'unknown') installType = 'npm'
+      }
+    } catch {
+      installType = 'npm' // Safe default — prevents accidental restart
     }
   }
 
@@ -66,6 +102,7 @@ async function checkOpenClawVersion(): Promise<VersionCheckResult> {
     currentVersion,
     latestVersion,
     updateAvailable,
+    installType,
   }
 
   versionCache = { checkedAt: now, result }
@@ -75,7 +112,6 @@ async function checkOpenClawVersion(): Promise<VersionCheckResult> {
 export const Route = createFileRoute('/api/openclaw-update')({
   server: {
     handlers: {
-      // GET: check for updates
       GET: async () => {
         try {
           const result = await checkOpenClawVersion()
@@ -88,16 +124,23 @@ export const Route = createFileRoute('/api/openclaw-update')({
         }
       },
 
-      // POST: trigger the update
       POST: async () => {
         try {
-          // Use gateway's update.run action
+          // Re-check install type before attempting update
+          const check = await checkOpenClawVersion()
+          if (check.installType === 'npm') {
+            return json({
+              ok: false,
+              error: 'OpenClaw is installed via npm. Update with: npm install -g openclaw@latest',
+              installType: 'npm',
+            })
+          }
+
           const result = await gatewayRpc<{ ok: boolean; error?: string }>(
             'update.run',
             {},
           )
 
-          // Clear version cache so next check picks up new version
           versionCache = null
 
           if (result?.ok === false) {
@@ -106,7 +149,6 @@ export const Route = createFileRoute('/api/openclaw-update')({
 
           return json({ ok: true, message: 'OpenClaw update initiated. Gateway will restart.' })
         } catch (err) {
-          // If the gateway disconnected (because it restarted), that's actually success
           const errMsg = err instanceof Error ? err.message : String(err)
           if (errMsg.includes('close') || errMsg.includes('disconnect') || errMsg.includes('ECONNRESET')) {
             versionCache = null
