@@ -4,7 +4,7 @@
 import { Notification03Icon } from '@hugeicons/core-free-icons'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { DashboardGlassCard } from './dashboard-glass-card'
+import { WidgetShell } from './widget-shell'
 import type { DashboardNotification } from './dashboard-types'
 import { cn } from '@/lib/utils'
 

@@ -2,7 +2,7 @@ import { Activity01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef } from 'react'
-import { DashboardGlassCard } from './dashboard-glass-card'
+import { WidgetShell } from './widget-shell'
 import type { ActivityEvent } from '@/types/activity-event'
 import { useActivityEvents } from '@/screens/activity/use-activity-events'
 import { cn } from '@/lib/utils'
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 type ActivityLogWidgetProps = {
   draggable?: boolean
   onRemove?: () => void
+  editMode?: boolean
 }
 
 function getEventLevelDot(level: ActivityEvent['level']): string {
@@ -42,8 +43,9 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 export function ActivityLogWidget({
-  draggable = false,
+  draggable: _draggable = false,
   onRemove,
+  editMode,
 }: ActivityLogWidgetProps) {
   const navigate = useNavigate()
   const { events, isConnected, isLoading } = useActivityEvents({
@@ -71,19 +73,18 @@ export function ActivityLogWidget({
   )
 
   return (
-    <DashboardGlassCard
+    <WidgetShell
+      size="large"
       title="Activity Log"
-      titleAccessory={
+      icon={Activity01Icon}
+      action={
         <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-100/70 px-2 py-0.5 text-[11px] font-medium text-primary-500 tabular-nums">
           {eventCount}
         </span>
       }
-      tier="tertiary"
-      description=""
-      icon={Activity01Icon}
-      draggable={draggable}
       onRemove={onRemove}
-      className="h-full rounded-xl border-primary-200 p-3.5 md:p-4 shadow-sm [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:normal-case [&_h2]:text-ink"
+      editMode={editMode}
+      className="h-full"
     >
       <div className="mb-2 flex items-center justify-between">
         <span
@@ -190,6 +191,6 @@ export function ActivityLogWidget({
           })}
         </div>
       )}
-    </DashboardGlassCard>
+    </WidgetShell>
   )
 }
