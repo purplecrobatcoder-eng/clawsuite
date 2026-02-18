@@ -91,6 +91,15 @@ export type GatewayModelSwitchResponse = {
   [key: string]: unknown
 }
 
+export type GatewayAgentActionResponse = {
+  ok?: boolean
+  error?: string
+}
+
+export type GatewayAgentPauseResponse = GatewayAgentActionResponse & {
+  paused?: boolean
+}
+
 async function readError(response: Response): Promise<string> {
   try {
     const payload = (await response.json()) as Record<string, unknown>
@@ -201,6 +210,119 @@ export async function switchModel(
         typeof payload.error === 'string' && payload.error.trim().length > 0
           ? payload.error
           : response.statusText || 'Failed to switch model'
+      throw new Error(message)
+    }
+
+    return payload
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error('Request timed out')
+    }
+    throw error
+  } finally {
+    globalThis.clearTimeout(timeout)
+  }
+}
+
+export async function steerAgent(
+  sessionKey: string,
+  message: string,
+): Promise<GatewayAgentActionResponse> {
+  const controller = new AbortController()
+  const timeout = globalThis.setTimeout(() => controller.abort(), 12000)
+
+  try {
+    const response = await fetch(makeEndpoint('/api/agent-steer'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionKey, message }),
+      signal: controller.signal,
+    })
+
+    const payload = (await response
+      .json()
+      .catch(() => ({}))) as GatewayAgentActionResponse
+
+    if (!response.ok || payload.ok === false) {
+      const message =
+        typeof payload.error === 'string' && payload.error.trim().length > 0
+          ? payload.error
+          : response.statusText || 'Failed to send directive'
+      throw new Error(message)
+    }
+
+    return payload
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error('Request timed out')
+    }
+    throw error
+  } finally {
+    globalThis.clearTimeout(timeout)
+  }
+}
+
+export async function killAgentSession(
+  sessionKey: string,
+): Promise<GatewayAgentActionResponse> {
+  const controller = new AbortController()
+  const timeout = globalThis.setTimeout(() => controller.abort(), 12000)
+
+  try {
+    const response = await fetch(makeEndpoint('/api/agent-kill'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionKey }),
+      signal: controller.signal,
+    })
+
+    const payload = (await response
+      .json()
+      .catch(() => ({}))) as GatewayAgentActionResponse
+
+    if (!response.ok || payload.ok === false) {
+      const message =
+        typeof payload.error === 'string' && payload.error.trim().length > 0
+          ? payload.error
+          : response.statusText || 'Failed to terminate agent'
+      throw new Error(message)
+    }
+
+    return payload
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error('Request timed out')
+    }
+    throw error
+  } finally {
+    globalThis.clearTimeout(timeout)
+  }
+}
+
+export async function toggleAgentPause(
+  sessionKey: string,
+  pause: boolean,
+): Promise<GatewayAgentPauseResponse> {
+  const controller = new AbortController()
+  const timeout = globalThis.setTimeout(() => controller.abort(), 12000)
+
+  try {
+    const response = await fetch(makeEndpoint('/api/agent-pause'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionKey, pause }),
+      signal: controller.signal,
+    })
+
+    const payload = (await response
+      .json()
+      .catch(() => ({}))) as GatewayAgentPauseResponse
+
+    if (!response.ok || payload.ok === false) {
+      const message =
+        typeof payload.error === 'string' && payload.error.trim().length > 0
+          ? payload.error
+          : response.statusText || 'Failed to update pause state'
       throw new Error(message)
     }
 

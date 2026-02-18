@@ -74,6 +74,9 @@ import { Route as ApiChatAbortRouteImport } from './routes/api/chat-abort'
 import { Route as ApiBrowserRouteImport } from './routes/api/browser'
 import { Route as ApiAuthCheckRouteImport } from './routes/api/auth-check'
 import { Route as ApiAuthRouteImport } from './routes/api/auth'
+import { Route as ApiAgentSteerRouteImport } from './routes/api/agent-steer'
+import { Route as ApiAgentPauseRouteImport } from './routes/api/agent-pause'
+import { Route as ApiAgentKillRouteImport } from './routes/api/agent-kill'
 import { Route as ApiAgentActivityRouteImport } from './routes/api/agent-activity'
 import { Route as ApiTasksIndexRouteImport } from './routes/api/tasks/index'
 import { Route as ApiTasksTaskIdRouteImport } from './routes/api/tasks/$taskId'
@@ -423,6 +426,21 @@ const ApiAuthRoute = ApiAuthRouteImport.update({
   path: '/api/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAgentSteerRoute = ApiAgentSteerRouteImport.update({
+  id: '/api/agent-steer',
+  path: '/api/agent-steer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentPauseRoute = ApiAgentPauseRouteImport.update({
+  id: '/api/agent-pause',
+  path: '/api/agent-pause',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentKillRoute = ApiAgentKillRouteImport.update({
+  id: '/api/agent-kill',
+  path: '/api/agent-kill',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAgentActivityRoute = ApiAgentActivityRouteImport.update({
   id: '/api/agent-activity',
   path: '/api/agent-activity',
@@ -565,6 +583,9 @@ export interface FileRoutesByFullPath {
   '/terminal': typeof TerminalRoute
   '/usage': typeof UsageRoute
   '/api/agent-activity': typeof ApiAgentActivityRoute
+  '/api/agent-kill': typeof ApiAgentKillRoute
+  '/api/agent-pause': typeof ApiAgentPauseRoute
+  '/api/agent-steer': typeof ApiAgentSteerRoute
   '/api/auth': typeof ApiAuthRoute
   '/api/auth-check': typeof ApiAuthCheckRoute
   '/api/browser': typeof ApiBrowserRouteWithChildren
@@ -654,6 +675,9 @@ export interface FileRoutesByTo {
   '/terminal': typeof TerminalRoute
   '/usage': typeof UsageRoute
   '/api/agent-activity': typeof ApiAgentActivityRoute
+  '/api/agent-kill': typeof ApiAgentKillRoute
+  '/api/agent-pause': typeof ApiAgentPauseRoute
+  '/api/agent-steer': typeof ApiAgentSteerRoute
   '/api/auth': typeof ApiAuthRoute
   '/api/auth-check': typeof ApiAuthCheckRoute
   '/api/browser': typeof ApiBrowserRouteWithChildren
@@ -745,6 +769,9 @@ export interface FileRoutesById {
   '/terminal': typeof TerminalRoute
   '/usage': typeof UsageRoute
   '/api/agent-activity': typeof ApiAgentActivityRoute
+  '/api/agent-kill': typeof ApiAgentKillRoute
+  '/api/agent-pause': typeof ApiAgentPauseRoute
+  '/api/agent-steer': typeof ApiAgentSteerRoute
   '/api/auth': typeof ApiAuthRoute
   '/api/auth-check': typeof ApiAuthCheckRoute
   '/api/browser': typeof ApiBrowserRouteWithChildren
@@ -837,6 +864,9 @@ export interface FileRouteTypes {
     | '/terminal'
     | '/usage'
     | '/api/agent-activity'
+    | '/api/agent-kill'
+    | '/api/agent-pause'
+    | '/api/agent-steer'
     | '/api/auth'
     | '/api/auth-check'
     | '/api/browser'
@@ -926,6 +956,9 @@ export interface FileRouteTypes {
     | '/terminal'
     | '/usage'
     | '/api/agent-activity'
+    | '/api/agent-kill'
+    | '/api/agent-pause'
+    | '/api/agent-steer'
     | '/api/auth'
     | '/api/auth-check'
     | '/api/browser'
@@ -1016,6 +1049,9 @@ export interface FileRouteTypes {
     | '/terminal'
     | '/usage'
     | '/api/agent-activity'
+    | '/api/agent-kill'
+    | '/api/agent-pause'
+    | '/api/agent-steer'
     | '/api/auth'
     | '/api/auth-check'
     | '/api/browser'
@@ -1107,6 +1143,9 @@ export interface RootRouteChildren {
   TerminalRoute: typeof TerminalRoute
   UsageRoute: typeof UsageRoute
   ApiAgentActivityRoute: typeof ApiAgentActivityRoute
+  ApiAgentKillRoute: typeof ApiAgentKillRoute
+  ApiAgentPauseRoute: typeof ApiAgentPauseRoute
+  ApiAgentSteerRoute: typeof ApiAgentSteerRoute
   ApiAuthRoute: typeof ApiAuthRoute
   ApiAuthCheckRoute: typeof ApiAuthCheckRoute
   ApiBrowserRoute: typeof ApiBrowserRouteWithChildren
@@ -1616,6 +1655,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/agent-steer': {
+      id: '/api/agent-steer'
+      path: '/api/agent-steer'
+      fullPath: '/api/agent-steer'
+      preLoaderRoute: typeof ApiAgentSteerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/agent-pause': {
+      id: '/api/agent-pause'
+      path: '/api/agent-pause'
+      fullPath: '/api/agent-pause'
+      preLoaderRoute: typeof ApiAgentPauseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/agent-kill': {
+      id: '/api/agent-kill'
+      path: '/api/agent-kill'
+      fullPath: '/api/agent-kill'
+      preLoaderRoute: typeof ApiAgentKillRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/agent-activity': {
       id: '/api/agent-activity'
       path: '/api/agent-activity'
@@ -1882,6 +1942,9 @@ const rootRouteChildren: RootRouteChildren = {
   TerminalRoute: TerminalRoute,
   UsageRoute: UsageRoute,
   ApiAgentActivityRoute: ApiAgentActivityRoute,
+  ApiAgentKillRoute: ApiAgentKillRoute,
+  ApiAgentPauseRoute: ApiAgentPauseRoute,
+  ApiAgentSteerRoute: ApiAgentSteerRoute,
   ApiAuthRoute: ApiAuthRoute,
   ApiAuthCheckRoute: ApiAuthCheckRoute,
   ApiBrowserRoute: ApiBrowserRouteWithChildren,

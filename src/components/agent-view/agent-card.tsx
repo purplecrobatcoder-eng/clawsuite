@@ -10,28 +10,32 @@ import {
   EyeIcon,
   KeyIcon,
   AiBrain01Icon,
+  MoreVerticalIcon,
+  PauseIcon,
+  PlayIcon,
 } from '@hugeicons/core-free-icons'
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AgentProgress } from './agent-progress'
 import type { AgentProgressStatus } from './agent-progress'
-import {
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogRoot,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { KillConfirmDialog } from './kill-confirm-dialog'
+import { SteerModal } from './steer-modal'
 import { Button } from '@/components/ui/button'
 import { AgentAvatar } from '@/components/agent-avatar'
 import {
   PERSONA_COLORS,
   PixelAvatar,
 } from '@/components/agent-swarm/pixel-avatar'
+import {
+  MenuContent,
+  MenuItem,
+  MenuRoot,
+  MenuTrigger,
+} from '@/components/ui/menu'
+import { toast } from '@/components/ui/toast'
 import { assignPersona } from '@/lib/agent-personas'
 import { formatCost, formatRuntime } from '@/hooks/use-agent-view'
+import { toggleAgentPause } from '@/lib/gateway-api'
 import {
   TooltipContent,
   TooltipRoot,
@@ -178,7 +182,22 @@ export function AgentCard({
 }: AgentCardProps) {
   const showActions = !node.isMain
   const isCompact = viewMode === 'compact'
+  const isQueued = node.status === 'queued'
+  const sessionKey = (node.sessionKey || node.id || '').trim()
+  const canWardenControl = showActions && !isQueued && sessionKey.length > 0
   const [showDetail, setShowDetail] = useState(false)
+  const [steerOpen, setSteerOpen] = useState(false)
+  const [killConfirmOpen, setKillConfirmOpen] = useState(false)
+  const [isPausePending, setIsPausePending] = useState(false)
+  const [pausedOverride, setPausedOverride] = useState<boolean | null>(null)
+  const isPaused = pausedOverride ?? false
+
+  useEffect(() => {
+    setSteerOpen(false)
+    setKillConfirmOpen(false)
+    setPausedOverride(null)
+    setIsPausePending(false)
+  }, [node.id])
 
   function handleViewClick() {
     if (useInlineDetail) {
@@ -187,6 +206,115 @@ export function AgentCard({
       onView?.(node.id)
     }
   }
+
+  function handleKillComplete() {
+    onKill?.(node.id)
+    setShowDetail(false)
+  }
+
+  async function handleTogglePause() {
+    if (!canWardenControl || isPausePending) return
+    const nextPaused = !isPaused
+
+    setIsPausePending(true)
+    try {
+      const payload = await toggleAgentPause(sessionKey, nextPaused)
+      const paused =
+        typeof payload.paused === 'boolean' ? payload.paused : nextPaused
+      setPausedOverride(paused)
+      toast(`${node.name} ${paused ? 'paused' : 'resumed'}`, {
+        type: 'success',
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : `Failed to ${nextPaused ? 'pause' : 'resume'} agent`
+      toast(message, { type: 'error' })
+    } finally {
+      setIsPausePending(false)
+    }
+  }
+
+  function renderWardenMenu(triggerClassName: string) {
+    if (!canWardenControl) return null
+
+    return (
+      <MenuRoot>
+        <MenuTrigger
+          type="button"
+          className={cn(
+            'inline-flex items-center justify-center rounded-md text-primary-700 hover:bg-primary-200 hover:text-primary-900',
+            'aria-expanded:bg-primary-200',
+            triggerClassName,
+          )}
+          aria-label={`${node.name} controls`}
+          title="Agent controls"
+        >
+          <HugeiconsIcon icon={MoreVerticalIcon} size={16} strokeWidth={1.5} />
+        </MenuTrigger>
+        <MenuContent side="bottom" align="end" className="min-w-[150px]">
+          <MenuItem
+            onClick={function onClickSteer() {
+              setSteerOpen(true)
+            }}
+            disabled={!canWardenControl}
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+          >
+            <HugeiconsIcon icon={AiChat01Icon} size={16} strokeWidth={1.5} />
+            Steer
+          </MenuItem>
+          <MenuItem
+            onClick={function onClickPauseToggle() {
+              void handleTogglePause()
+            }}
+            disabled={isPausePending}
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+          >
+            <HugeiconsIcon
+              icon={isPaused ? PlayIcon : PauseIcon}
+              size={16}
+              strokeWidth={1.5}
+            />
+            {isPausePending
+              ? isPaused
+                ? 'Resuming...'
+                : 'Pausing...'
+              : isPaused
+                ? 'Resume'
+                : 'Pause'}
+          </MenuItem>
+          <MenuItem
+            onClick={function onClickKill() {
+              setKillConfirmOpen(true)
+            }}
+            className="text-red-700 hover:bg-red-50/80 data-highlighted:bg-red-50/80"
+          >
+            <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.5} />
+            Kill
+          </MenuItem>
+        </MenuContent>
+      </MenuRoot>
+    )
+  }
+
+  const wardenDialogs = canWardenControl ? (
+    <>
+      <SteerModal
+        open={steerOpen}
+        onOpenChange={setSteerOpen}
+        agentName={node.name}
+        sessionKey={sessionKey}
+      />
+      <KillConfirmDialog
+        open={killConfirmOpen}
+        onOpenChange={setKillConfirmOpen}
+        agentName={node.name}
+        sessionKey={sessionKey}
+        onKilled={handleKillComplete}
+      />
+    </>
+  ) : null
 
   // Detail panel view
   if (showDetail) {
@@ -224,6 +352,7 @@ export function AgentCard({
           >
             {node.model}
           </span>
+          {renderWardenMenu('size-7 rounded-full')}
         </div>
 
         {/* Full task description */}
@@ -355,47 +484,10 @@ export function AgentCard({
                 />
                 Cancel
               </Button>
-            ) : (
-              <AlertDialogRoot>
-                <AlertDialogTrigger
-                  render={
-                    <Button
-                      variant="destructive"
-                      size="icon-sm"
-                      className="size-8 rounded-full"
-                    >
-                      <HugeiconsIcon
-                        icon={Delete02Icon}
-                        size={16}
-                        strokeWidth={1.5}
-                      />
-                    </Button>
-                  }
-                />
-                <AlertDialogContent className="w-[min(420px,90vw)]">
-                  <div className="space-y-3 p-4">
-                    <AlertDialogTitle>Kill this agent run?</AlertDialogTitle>
-                    <AlertDialogDescription className="text-pretty">
-                      {node.name} will stop immediately and be moved to history
-                      as failed.
-                    </AlertDialogDescription>
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <AlertDialogCancel className="h-8">
-                        Cancel
-                      </AlertDialogCancel>
-                      <AlertDialogAction
-                        className="h-8"
-                        onClick={() => onKill?.(node.id)}
-                      >
-                        Kill Agent
-                      </AlertDialogAction>
-                    </div>
-                  </div>
-                </AlertDialogContent>
-              </AlertDialogRoot>
-            )}
+            ) : null}
           </div>
         ) : null}
+        {wardenDialogs}
       </motion.article>
     )
   }
@@ -455,6 +547,7 @@ export function AgentCard({
                 {getStatusLabel(node.status)}
               </span>
             </div>
+            {renderWardenMenu('size-6 rounded-md')}
           </div>
 
           <div className="relative mx-auto mb-1 size-10">
@@ -605,6 +698,7 @@ export function AgentCard({
               >
                 {node.model}
               </span>
+              {renderWardenMenu('ml-auto size-6 shrink-0 rounded-md')}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               {node.isLive ? (
@@ -668,7 +762,7 @@ export function AgentCard({
                 : 'mt-2',
             )}
           >
-            {/* Buttons row: Chat | View | Kill icon — all inline */}
+            {/* Buttons row: Chat | View | Cancel */}
             <div className="flex items-center gap-1.5">
               {onChat ? (
                 <Button
@@ -714,52 +808,12 @@ export function AgentCard({
                     strokeWidth={1.5}
                   />
                 </Button>
-              ) : (
-                <AlertDialogRoot>
-                  <AlertDialogTrigger
-                    render={
-                      <Button
-                        variant="destructive"
-                        size="icon-sm"
-                        className="flex-shrink-0 rounded-full size-7"
-                        title="Kill agent"
-                      >
-                        <HugeiconsIcon
-                          icon={Delete02Icon}
-                          size={14}
-                          strokeWidth={1.5}
-                        />
-                      </Button>
-                    }
-                  />
-                  <AlertDialogContent className="w-[min(420px,90vw)]">
-                    <div className="space-y-3 p-4">
-                      <AlertDialogTitle>Kill this agent run?</AlertDialogTitle>
-                      <AlertDialogDescription className="text-pretty">
-                        {node.name} will stop immediately and be moved to
-                        history as failed.
-                      </AlertDialogDescription>
-                      <div className="flex items-center justify-end gap-2 pt-1">
-                        <AlertDialogCancel className="h-8">
-                          Cancel
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                          className="h-8"
-                          onClick={function handleKillConfirm() {
-                            onKill?.(node.id)
-                          }}
-                        >
-                          Kill Agent
-                        </AlertDialogAction>
-                      </div>
-                    </div>
-                  </AlertDialogContent>
-                </AlertDialogRoot>
-              )}
+              ) : null}
             </div>
           </div>
         ) : null}
       </div>
+      {wardenDialogs}
     </motion.article>
   )
 }
