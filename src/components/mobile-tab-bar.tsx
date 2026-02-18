@@ -130,14 +130,14 @@ export function MobileTabBar() {
       <nav
         ref={navRef}
         className={cn(
-          'fixed inset-x-0 bottom-0 z-40 isolate border-t border-primary-200/40 bg-primary-50/95 pb-[var(--safe-b)] md:hidden transition-all duration-200',
+          'fixed inset-x-0 bottom-0 z-40 isolate border-t border-gray-200/50 bg-white/95 pb-[max(var(--safe-b),env(safe-area-inset-bottom))] dark:border-gray-700/50 dark:bg-gray-950/95 md:hidden transition-all duration-200',
           hideTabBar
             ? 'translate-y-[110%] opacity-0 pointer-events-none'
             : 'translate-y-0 opacity-100',
         )}
         aria-label="Mobile navigation"
       >
-        <div className="mx-2 mb-0 grid grid-cols-4 gap-1 rounded-2xl border border-primary-200/60 px-1 py-1.5 shadow-[0_2px_20px_rgba(0,0,0,0.08)]">
+        <div className="mx-2 mb-0 grid grid-cols-4 gap-1 rounded-2xl border border-primary-200/60 px-1 py-1.5 shadow-[0_2px_20px_rgba(0,0,0,0.08)] dark:border-gray-700/70">
           {TABS.map((tab) => {
             const isActive = tab.match(pathname)
             const isCenterChat = tab.id === 'chat'
@@ -152,7 +152,7 @@ export function MobileTabBar() {
                 aria-current={isActive ? 'page' : undefined}
                 className={cn(
                   'flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-[10px] font-medium transition-transform duration-150 active:scale-90',
-                  isCenterChat ? '-translate-y-1.5' : '',
+                  isCenterChat ? '-mt-2' : '',
                 )}
               >
                 <span

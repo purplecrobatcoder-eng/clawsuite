@@ -1,13 +1,11 @@
-import { ArrowRight01Icon, Task01Icon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { Task01Icon } from '@hugeicons/core-free-icons'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { DashboardGlassCard } from './dashboard-glass-card'
 import type { CronJob } from '@/components/cron-manager/cron-types'
 import type { TaskPriority, TaskStatus } from '@/stores/task-store'
 import { fetchCronJobs } from '@/lib/cron-api'
-import { STATUS_LABELS, STATUS_ORDER } from '@/stores/task-store'
 import { cn } from '@/lib/utils'
 
 type TasksWidgetProps = {
@@ -24,36 +22,39 @@ type DashboardTask = {
 
 const PRIORITY_ORDER: Array<TaskPriority> = ['P0', 'P1', 'P2', 'P3']
 
-function priorityColor(p: TaskPriority): string {
-  if (p === 'P0') return 'bg-red-100/70 text-red-700'
-  if (p === 'P1') return 'bg-accent-100/70 text-accent-700'
-  if (p === 'P2') return 'bg-primary-200/60 text-primary-600'
-  return 'bg-primary-100 text-primary-400'
-}
-
-function statusDotColor(s: TaskStatus): string {
-  if (s === 'in_progress') return 'bg-accent-500'
-  if (s === 'review') return 'bg-accent-400'
-  if (s === 'done') return 'bg-primary-300'
-  return 'bg-primary-300'
-}
-
 function toTaskStatus(job: CronJob): TaskStatus {
   if (!job.enabled) return 'backlog'
-  const lastRunStatus = job.lastRun?.status
-  if (lastRunStatus === 'running' || lastRunStatus === 'queued')
-    return 'in_progress'
-  if (lastRunStatus === 'error') return 'review'
-  if (lastRunStatus === 'success') return 'done'
+  const status = job.lastRun?.status
+  if (status === 'running' || status === 'queued') return 'in_progress'
+  if (status === 'error') return 'review'
+  if (status === 'success') return 'done'
   return 'backlog'
 }
 
 function toTaskPriority(job: CronJob): TaskPriority {
-  const lastRunStatus = job.lastRun?.status
-  if (lastRunStatus === 'error') return 'P0'
-  if (lastRunStatus === 'running' || lastRunStatus === 'queued') return 'P1'
+  const status = job.lastRun?.status
+  if (status === 'error') return 'P0'
+  if (status === 'running' || status === 'queued') return 'P1'
   if (!job.enabled) return 'P3'
   return 'P2'
+}
+
+function priorityBadgeClass(priority: TaskPriority): string {
+  if (priority === 'P0') return 'bg-red-100/80 text-red-700'
+  if (priority === 'P1') return 'bg-amber-100/80 text-amber-700'
+  if (priority === 'P2') return 'bg-primary-200/65 text-primary-700'
+  return 'bg-gray-100/80 text-gray-600'
+}
+
+function statusDotClass(status: TaskStatus): string {
+  if (status === 'in_progress' || status === 'review') return 'bg-amber-500'
+  if (status === 'done') return 'bg-emerald-500'
+  return 'bg-gray-400'
+}
+
+function truncateTaskTitle(title: string): string {
+  if (title.length <= 30) return title
+  return `${title.slice(0, 29)}…`
 }
 
 function toDashboardTask(job: CronJob): DashboardTask {
@@ -65,74 +66,8 @@ function toDashboardTask(job: CronJob): DashboardTask {
   }
 }
 
-function MiniColumn({
-  status,
-  tasks,
-}: {
-  status: TaskStatus
-  tasks: Array<DashboardTask>
-}) {
-  const visible = tasks.slice(0, 3)
-  const remaining = tasks.length - visible.length
-
-  return (
-    <div className="min-w-0 flex-1">
-      <div className="mb-2 flex items-center gap-1.5">
-        <span className={cn('size-1.5 rounded-full', statusDotColor(status))} />
-        <span className="text-xs font-medium text-primary-600">
-          {STATUS_LABELS[status]}
-        </span>
-        <span className="font-mono text-xs text-primary-400 tabular-nums">
-          {tasks.length}
-        </span>
-      </div>
-      {visible.length === 0 ? (
-        <div className="rounded border border-dashed border-primary-200 py-3 text-center text-xs text-primary-300">
-          —
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          {visible.map((task, index) => (
-            <div
-              key={task.id}
-              className={cn(
-                'rounded-md border border-primary-200 px-2 py-2',
-                index % 2 === 0 ? 'bg-primary-50/90' : 'bg-primary-100/55',
-              )}
-            >
-              <p className="line-clamp-1 text-sm text-ink">{task.title}</p>
-              <span
-                className={cn(
-                  'mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
-                  priorityColor(task.priority),
-                )}
-              >
-                {task.priority}
-              </span>
-            </div>
-          ))}
-          {remaining > 0 ? (
-            <p className="text-center text-xs text-primary-400">
-              +{remaining} more
-            </p>
-          ) : null}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function TasksWidget({ draggable = false, onRemove }: TasksWidgetProps) {
   const navigate = useNavigate()
-  const [isMobileViewport, setIsMobileViewport] = useState(false)
-
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 767px)')
-    const update = () => setIsMobileViewport(media.matches)
-    update()
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
 
   const cronJobsQuery = useQuery({
     queryKey: ['cron', 'jobs'],
@@ -142,45 +77,28 @@ export function TasksWidget({ draggable = false, onRemove }: TasksWidgetProps) {
   })
 
   const tasks = useMemo(
-    function mapCronJobsToTasks() {
+    function buildTaskRows() {
       const jobs = Array.isArray(cronJobsQuery.data) ? cronJobsQuery.data : []
-      return jobs.map(function mapJob(job) {
-        return toDashboardTask(job)
-      })
+      return jobs.map(toDashboardTask)
     },
     [cronJobsQuery.data],
   )
 
-  const byStatus = useMemo(
-    () =>
-      STATUS_ORDER.reduce(
-        (acc, status) => {
-          acc[status] = tasks
-            .filter((t) => t.status === status)
-            .sort((a, b) => {
-              return (
-                PRIORITY_ORDER.indexOf(a.priority) -
-                PRIORITY_ORDER.indexOf(b.priority)
-              )
-            })
-          return acc
-        },
-        {} as Record<TaskStatus, Array<DashboardTask>>,
-      ),
+  const sortedTasks = useMemo(
+    function sortTasksByPriority() {
+      return [...tasks].sort(function sortByPriority(left, right) {
+        const leftOrder = PRIORITY_ORDER.indexOf(left.priority)
+        const rightOrder = PRIORITY_ORDER.indexOf(right.priority)
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder
+        return left.title.localeCompare(right.title)
+      })
+    },
     [tasks],
   )
 
-  const statusesToRender = useMemo(
-    () =>
-      STATUS_ORDER.filter((status) => {
-        if (!isMobileViewport) return true
-        return byStatus[status].length > 0
-      }),
-    [byStatus, isMobileViewport],
-  )
-
-  const activeCount = tasks.filter((t) => t.status !== 'done').length
-  const doneCount = tasks.filter((t) => t.status === 'done').length
+  const visibleTasks = sortedTasks.slice(0, 4)
+  const remainingCount = Math.max(0, sortedTasks.length - visibleTasks.length)
+  const activeCount = tasks.filter((task) => task.status !== 'done').length
   const errorMessage =
     cronJobsQuery.error instanceof Error ? cronJobsQuery.error.message : null
 
@@ -199,72 +117,60 @@ export function TasksWidget({ draggable = false, onRemove }: TasksWidgetProps) {
       onRemove={onRemove}
       className="h-full rounded-xl border-primary-200 p-3.5 md:p-4 shadow-sm [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:normal-case [&_h2]:text-ink"
     >
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-sm text-primary-600">
-          Active
-          <span className="ml-1 font-mono text-primary-400 tabular-nums">
-            {activeCount}
-          </span>
-        </span>
-        <span className="text-sm text-primary-600">
-          Done
-          <span className="ml-1 font-mono text-primary-400 tabular-nums">
-            {doneCount}
-          </span>
-        </span>
-      </div>
-
       {cronJobsQuery.isLoading && tasks.length === 0 ? (
-        <div className="mb-2 flex items-center gap-3 rounded-lg border border-primary-200 bg-primary-100/45 px-3 py-2.5">
-          <span
-            className="size-4 animate-spin rounded-full border-2 border-primary-300 border-t-accent-600"
-            role="status"
-            aria-label="Loading"
-          />
-          <span className="text-sm text-primary-600">Loading tasks…</span>
+        <div className="rounded-lg border border-primary-200 bg-primary-100/45 px-3 py-3 text-sm text-primary-600">
+          Loading tasks…
         </div>
-      ) : null}
-      {cronJobsQuery.isError ? (
-        <div className="mb-2 rounded-lg border border-accent-300 bg-accent-100/65 px-3 py-2.5 text-sm text-accent-700 text-pretty">
-          {errorMessage ?? 'Unable to load gateway tasks.'}
+      ) : cronJobsQuery.isError ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-700">
+          {errorMessage ?? 'Unable to load tasks.'}
         </div>
-      ) : null}
-      {!cronJobsQuery.isLoading &&
-      !cronJobsQuery.isError &&
-      tasks.length === 0 ? (
-        <div className="mb-2 rounded-lg border border-primary-200 bg-primary-100/45 px-3 py-2.5">
-          <p className="text-sm font-semibold text-ink">No tasks yet</p>
-          <p className="mt-0.5 text-sm text-primary-600 text-pretty">
-            Scheduled cron jobs and automated tasks will appear here.
-          </p>
+      ) : tasks.length === 0 ? (
+        <div className="rounded-lg border border-primary-200 bg-primary-100/45 px-3 py-3 text-sm text-primary-600">
+          No tasks yet
         </div>
-      ) : null}
+      ) : (
+        <div className="space-y-1.5">
+          {visibleTasks.map(function renderTask(task, index) {
+            return (
+              <article
+                key={task.id}
+                className={cn(
+                  'flex items-center gap-2 rounded-lg border border-primary-200 px-2.5 py-2',
+                  index % 2 === 0 ? 'bg-primary-50/90' : 'bg-primary-100/60',
+                )}
+              >
+                <span
+                  className={cn('size-2 shrink-0 rounded-full', statusDotClass(task.status))}
+                />
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                  {truncateTaskTitle(task.title)}
+                </span>
+                <span
+                  className={cn(
+                    'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                    priorityBadgeClass(task.priority),
+                  )}
+                >
+                  {task.priority}
+                </span>
+              </article>
+            )
+          })}
 
-      {statusesToRender.length > 0 ? (
-        <div
-          className={cn(
-            'grid gap-3 xl:grid-cols-4',
-            isMobileViewport
-              ? statusesToRender.length <= 1
-                ? 'grid-cols-1'
-                : 'grid-cols-2'
-              : 'grid-cols-2',
-          )}
-        >
-          {statusesToRender.map((status) => (
-            <MiniColumn key={status} status={status} tasks={byStatus[status]} />
-          ))}
+          {remainingCount > 0 ? (
+            <p className="px-1 text-xs text-primary-500">+{remainingCount} more</p>
+          ) : null}
         </div>
-      ) : null}
+      )}
 
-      <div className="mt-3 flex justify-end">
+      <div className="mt-2 flex justify-end">
         <button
           type="button"
           onClick={() => void navigate({ to: '/cron' })}
-          className="inline-flex items-center gap-1 text-xs font-medium text-primary-400 transition-colors hover:text-accent-600"
+          className="inline-flex items-center gap-1 text-xs font-medium text-primary-500 transition-colors hover:text-accent-600"
         >
-          View all
-          <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={1.5} />
+          View all →
         </button>
       </div>
     </DashboardGlassCard>

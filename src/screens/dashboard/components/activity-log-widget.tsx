@@ -1,7 +1,6 @@
-import { Activity01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
+import { Activity01Icon } from '@hugeicons/core-free-icons'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import { WidgetShell } from './widget-shell'
 import type { ActivityEvent } from '@/types/activity-event'
 import { useActivityEvents } from '@/screens/activity/use-activity-events'
@@ -13,33 +12,194 @@ type ActivityLogWidgetProps = {
   editMode?: boolean
 }
 
-function getEventLevelDot(level: ActivityEvent['level']): string {
-  if (level === 'error') return 'bg-red-500'
-  if (level === 'warn') return 'bg-accent-500'
-  if (level === 'info') return 'bg-accent-400'
-  return 'bg-primary-300'
+type ActivityPreviewRow = {
+  id: string
+  icon: string
+  iconClassName: string
+  sourceLabel: string
+  summary: string
+  timestamp: number
 }
 
-function getEventTypeLabel(type: ActivityEvent['type']): string {
-  if (type === 'gateway') return 'Gateway'
-  if (type === 'model') return 'Model'
-  if (type === 'usage') return 'Usage'
-  if (type === 'cron') return 'Cron'
-  if (type === 'tool') return 'Tool'
-  if (type === 'error') return 'Error'
-  return 'Session'
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function looksLikeJson(raw: string): boolean {
+  const text = raw.trim()
+  if (!text) return false
+  return text.startsWith('{') || text.startsWith('[')
+}
+
+function parseJsonRecord(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null
+    }
+    return parsed as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function toFriendlySource(source?: string): string {
+  const text = readString(source)
+  if (!text) return 'Gateway'
+  const segments = text.split(':').filter(Boolean)
+  const tail = segments[segments.length - 1] ?? text
+  if (!tail) return 'Gateway'
+  return tail.charAt(0).toUpperCase() + tail.slice(1)
+}
+
+function formatModelName(raw: string): string {
+  if (!raw) return 'Unknown model'
+  const lower = raw.toLowerCase()
+  if (lower.includes('opus')) {
+    const match = raw.match(/opus[- ]?(\d+)[- ]?(\d+)/i)
+    return match ? `Opus ${match[1]}.${match[2]}` : 'Opus'
+  }
+  if (lower.includes('sonnet')) {
+    const match = raw.match(/sonnet[- ]?(\d+)[- ]?(\d+)/i)
+    return match ? `Sonnet ${match[1]}.${match[2]}` : 'Sonnet'
+  }
+  if (lower.includes('gpt')) return raw.replace('gpt-', 'GPT-')
+  if (raw.includes('/')) return raw.split('/').pop() ?? raw
+  return raw
 }
 
 function formatRelativeTime(timestamp: number): string {
   const diffMs = Math.max(0, Date.now() - timestamp)
   const seconds = Math.floor(diffMs / 1000)
-  if (seconds < 60) return `${seconds}s ago`
+  if (seconds < 60) return `${seconds}s`
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 60) return `${minutes}m`
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return `${hours}h`
   const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  return `${days}d`
+}
+
+function parseKnownJsonEvent(event: ActivityEvent): ActivityPreviewRow | null {
+  const rawJson =
+    (looksLikeJson(event.detail ?? '') && (event.detail ?? '')) ||
+    (looksLikeJson(event.title) ? event.title : '')
+  if (!rawJson) return null
+
+  const parsed = parseJsonRecord(rawJson)
+  if (!parsed) return null
+
+  const parsedError = readString(parsed.error)
+  const parsedMessage = readString(parsed.message)
+  const parsedModel =
+    readString(parsed.model) ||
+    readString(parsed.currentModel) ||
+    readString(parsed.modelAlias)
+  const parsedEventType = readString(parsed.event).toLowerCase()
+  const summarySource = toFriendlySource(event.source)
+
+  if (
+    event.level === 'error' ||
+    event.type === 'error' ||
+    parsedError.length > 0 ||
+    parsedEventType.includes('error') ||
+    parsed.ok === false
+  ) {
+    return {
+      id: event.id,
+      icon: '⚠',
+      iconClassName: 'text-amber-600',
+      sourceLabel: summarySource,
+      summary: parsedError || parsedMessage || 'Error event',
+      timestamp: event.timestamp,
+    }
+  }
+
+  const hasGatewayTick =
+    event.type === 'gateway' &&
+    (parsed.ok === true ||
+      typeof parsed.ts === 'number' ||
+      typeof parsed.timestamp === 'number' ||
+      parsedEventType.includes('tick') ||
+      parsedEventType.includes('health'))
+  if (hasGatewayTick) {
+    return {
+      id: event.id,
+      icon: '✓',
+      iconClassName: 'text-emerald-600',
+      sourceLabel: summarySource,
+      summary: 'Gateway health check',
+      timestamp: event.timestamp,
+    }
+  }
+
+  if (event.type === 'session' || parsedEventType.includes('session')) {
+    return {
+      id: event.id,
+      icon: '•',
+      iconClassName: 'text-primary-500',
+      sourceLabel: summarySource,
+      summary: `Session started: ${formatModelName(parsedModel || 'Unknown model')}`,
+      timestamp: event.timestamp,
+    }
+  }
+
+  return null
+}
+
+function toPreviewRow(event: ActivityEvent): ActivityPreviewRow | null {
+  const parsedJsonEvent = parseKnownJsonEvent(event)
+  if (parsedJsonEvent) return parsedJsonEvent
+
+  if (looksLikeJson(event.detail ?? '') || looksLikeJson(event.title)) {
+    return null
+  }
+
+  const sourceLabel = toFriendlySource(event.source)
+  if (event.level === 'error' || event.type === 'error') {
+    return {
+      id: event.id,
+      icon: '⚠',
+      iconClassName: 'text-amber-600',
+      sourceLabel,
+      summary: readString(event.title) || readString(event.detail) || 'Error event',
+      timestamp: event.timestamp,
+    }
+  }
+
+  if (event.type === 'gateway') {
+    return {
+      id: event.id,
+      icon: '✓',
+      iconClassName: 'text-emerald-600',
+      sourceLabel,
+      summary: 'Gateway health check',
+      timestamp: event.timestamp,
+    }
+  }
+
+  if (event.type === 'session') {
+    return {
+      id: event.id,
+      icon: '•',
+      iconClassName: 'text-primary-500',
+      sourceLabel,
+      summary: readString(event.title) || 'Session started',
+      timestamp: event.timestamp,
+    }
+  }
+
+  const fallbackSummary = readString(event.title) || readString(event.detail)
+  if (!fallbackSummary) return null
+
+  return {
+    id: event.id,
+    icon: '•',
+    iconClassName: 'text-primary-500',
+    sourceLabel,
+    summary: fallbackSummary,
+    timestamp: event.timestamp,
+  }
 }
 
 export function ActivityLogWidget({
@@ -53,23 +213,22 @@ export function ActivityLogWidget({
     maxEvents: 100,
   })
 
-  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const previewRows = useMemo(
+    function buildPreviewRows() {
+      const rows: Array<ActivityPreviewRow> = []
 
-  const latestEvents = useMemo(
-    function sliceLatestEvents() {
-      return events.slice(events.length - 20)
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        const event = events[index]
+        if (!event) continue
+        const row = toPreviewRow(event)
+        if (!row) continue
+        rows.push(row)
+        if (rows.length >= 4) break
+      }
+
+      return rows
     },
     [events],
-  )
-  const eventCount = latestEvents.length
-
-  useEffect(
-    function autoScrollToLatest() {
-      const viewport = viewportRef.current
-      if (!viewport) return
-      viewport.scrollTop = viewport.scrollHeight
-    },
-    [latestEvents.length],
   )
 
   return (
@@ -79,17 +238,17 @@ export function ActivityLogWidget({
       icon={Activity01Icon}
       action={
         <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-100/70 px-2 py-0.5 text-[11px] font-medium text-primary-500 tabular-nums">
-          {eventCount}
+          {previewRows.length}
         </span>
       }
       onRemove={onRemove}
       editMode={editMode}
       className="h-full"
     >
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2">
         <span
           className={cn(
-            'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium tabular-nums',
+            'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
             isConnected
               ? 'border-emerald-200 bg-emerald-100/70 text-emerald-700'
               : 'border-red-200 bg-red-100/80 text-red-700',
@@ -97,100 +256,59 @@ export function ActivityLogWidget({
         >
           <span
             className={cn(
-              'inline-flex size-1.5 rounded-full',
+              'size-1.5 rounded-full',
               isConnected ? 'animate-pulse bg-emerald-500' : 'bg-red-500',
             )}
           />
           {isConnected ? 'Live' : 'Disconnected'}
         </span>
-        <button
-          type="button"
-          onClick={() => void navigate({ to: '/activity' })}
-          className="inline-flex items-center gap-1 text-xs font-medium text-primary-400 transition-colors hover:text-accent-600"
-        >
-          View all
-          <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={1.5} />
-        </button>
       </div>
 
-      {!isConnected ? (
-        <div className="mb-2 rounded-lg border border-red-200 bg-red-50/80 px-3 py-2.5">
-          <p className="text-sm font-semibold text-red-900">
-            Gateway disconnected
-          </p>
-          <p className="mt-0.5 text-sm text-red-700 text-pretty">
-            Live event stream is unavailable. Reconnect to continue.
-          </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="mt-2 rounded-lg border border-red-200 bg-red-100/70 px-3 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1"
-            aria-label="Retry connection"
-          >
-            Reconnect
-          </button>
+      {isLoading && previewRows.length === 0 ? (
+        <div className="rounded-lg border border-primary-200 bg-primary-100/45 px-3 py-3 text-sm text-primary-600">
+          Loading activity…
         </div>
-      ) : null}
-
-      {isLoading && latestEvents.length === 0 ? (
-        <div className="flex h-32 items-center justify-center gap-3 rounded-lg border border-primary-200 bg-primary-100/45">
-          <span
-            className="size-4 animate-spin rounded-full border-2 border-primary-300 border-t-accent-600"
-            role="status"
-            aria-label="Loading"
-          />
-          <span className="text-sm text-primary-600">Loading activity…</span>
-        </div>
-      ) : latestEvents.length === 0 ? (
-        <div className="flex h-32 flex-col items-center justify-center gap-1 rounded-lg border border-primary-200 bg-primary-100/45">
-          <p className="text-sm font-semibold text-ink">No events yet</p>
-          <p className="text-xs text-primary-500">
-            Activity will appear as you use the system
-          </p>
+      ) : previewRows.length === 0 ? (
+        <div className="rounded-lg border border-primary-200 bg-primary-100/45 px-3 py-3 text-sm text-primary-600">
+          No activity events yet
         </div>
       ) : (
-        <div
-          ref={viewportRef}
-          className="max-h-[260px] space-y-2 overflow-y-auto"
-        >
-          {latestEvents.map(function mapEvent(event, index) {
+        <div className="space-y-1.5">
+          {previewRows.map(function renderRow(row) {
             return (
               <article
-                key={event.id}
-                className={cn(
-                  'rounded-lg border border-primary-200 px-3.5 py-2.5',
-                  index % 2 === 0 ? 'bg-primary-50/90' : 'bg-primary-100/55',
-                )}
+                key={row.id}
+                className="rounded-lg border border-primary-200/80 bg-primary-50/70 px-3 py-2"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span
-                      className={cn(
-                        'size-1.5 rounded-full',
-                        getEventLevelDot(event.level),
-                      )}
-                    />
-                    <span className="text-xs font-medium text-primary-600">
-                      {getEventTypeLabel(event.type)}
-                    </span>
+                <div className="flex items-start gap-2">
+                  <span className={cn('mt-0.5 text-xs', row.iconClassName)}>
+                    {row.icon}
                   </span>
-                  <span className="font-mono text-xs text-primary-400 tabular-nums">
-                    {formatRelativeTime(event.timestamp)}
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm text-primary-700">
+                      <span className="font-semibold text-ink">{row.sourceLabel}</span>{' '}
+                      <span>{row.summary}</span>
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-[11px] text-primary-400">
+                    {formatRelativeTime(row.timestamp)}
                   </span>
                 </div>
-                <p className="mt-1 line-clamp-2 text-sm font-semibold text-ink text-pretty">
-                  {event.title}
-                </p>
-                {event.detail ? (
-                  <p className="mt-1 line-clamp-2 text-sm text-primary-600 text-pretty">
-                    {event.detail}
-                  </p>
-                ) : null}
               </article>
             )
           })}
         </div>
       )}
+
+      <div className="mt-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => void navigate({ to: '/activity' })}
+          className="inline-flex items-center gap-1 text-xs font-medium text-primary-500 transition-colors hover:text-accent-600"
+        >
+          View all →
+        </button>
+      </div>
     </WidgetShell>
   )
 }

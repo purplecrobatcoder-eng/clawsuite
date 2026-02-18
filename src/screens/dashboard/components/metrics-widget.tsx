@@ -9,9 +9,20 @@ type MetricsWidgetProps = {
   value: string
   subtitle: string
   icon: DashboardIcon
+  color?: 'blue' | 'orange' | 'emerald' | 'violet'
   isError?: boolean
   onRetry?: () => void
   className?: string
+}
+
+const METRIC_COLOR_CLASSES: Record<
+  NonNullable<MetricsWidgetProps['color']>,
+  string
+> = {
+  blue: 'border-l-4 border-blue-400 bg-blue-50/30',
+  orange: 'border-l-4 border-orange-400 bg-orange-50/30',
+  emerald: 'border-l-4 border-emerald-400 bg-emerald-50/30',
+  violet: 'border-l-4 border-violet-400 bg-violet-50/30',
 }
 
 export function MetricsWidget({
@@ -19,6 +30,7 @@ export function MetricsWidget({
   value,
   subtitle,
   icon,
+  color = 'blue',
   isError = false,
   onRetry,
   className,
@@ -28,7 +40,7 @@ export function MetricsWidget({
       size="small"
       title={title}
       icon={icon}
-      className={cn('h-full', className)}
+      className={cn('h-full', METRIC_COLOR_CLASSES[color], className)}
       action={
         isError && onRetry ? (
           <button

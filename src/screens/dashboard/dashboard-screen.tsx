@@ -87,6 +87,12 @@ type MobileWidgetSection = {
   content: ReactNode
 }
 
+type DashboardSignalChip = {
+  id: string
+  text: string
+  severity: 'amber' | 'red'
+}
+
 // Pull-to-refresh constants removed
 
 function readNumeric(value: unknown): number {
@@ -126,6 +132,48 @@ function formatUptime(seconds: number): string {
   if (days > 0) return `${days}d ${hours}h`
   if (hours > 0) return `${hours}h ${minutes}m`
   return `${minutes}m`
+}
+
+function normalizeTimestamp(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value > 1_000_000_000_000 ? value : value * 1000
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    if (!Number.isNaN(parsed)) return parsed
+    const asNumber = Number(value)
+    if (Number.isFinite(asNumber)) {
+      return asNumber > 1_000_000_000_000 ? asNumber : asNumber * 1000
+    }
+  }
+  return 0
+}
+
+function toSessionDisplayName(session: Record<string, unknown>): string {
+  const label =
+    typeof session.label === 'string' && session.label.trim().length > 0
+      ? session.label.trim()
+      : ''
+  if (label) return label
+
+  const derived =
+    typeof session.derivedTitle === 'string' &&
+    session.derivedTitle.trim().length > 0
+      ? session.derivedTitle.trim()
+      : ''
+  if (derived) return derived
+
+  const title =
+    typeof session.title === 'string' && session.title.trim().length > 0
+      ? session.title.trim()
+      : ''
+  if (title) return title
+
+  const friendlyId =
+    typeof session.friendlyId === 'string' && session.friendlyId.trim().length > 0
+      ? session.friendlyId.trim()
+      : 'main'
+  return friendlyId === 'main' ? 'Main Session' : friendlyId
 }
 
 function toTaskSummaryStatus(
@@ -439,6 +487,77 @@ export function DashboardScreen() {
     [costTimeseriesQuery.data, nowMs, usageSummaryQuery.data, usageSummaryQuery.isError],
   )
 
+  const stalledAgentName = useMemo(
+    function findStalledAgentName() {
+      const sessions = Array.isArray(sessionsQuery.data) ? sessionsQuery.data : []
+      if (sessions.length === 0) return null
+
+      const now = Date.now()
+      const stalled = sessions
+        .map(function mapSession(session) {
+          const raw = session as Record<string, unknown>
+          const updatedAt = normalizeTimestamp(raw.updatedAt)
+          if (updatedAt <= 0) return null
+
+          const staleForMs = now - updatedAt
+          if (staleForMs <= 30 * 60 * 1000) return null
+
+          return {
+            name: toSessionDisplayName(raw),
+            staleForMs,
+          }
+        })
+        .filter((entry): entry is { name: string; staleForMs: number } => entry !== null)
+        .sort((left, right) => right.staleForMs - left.staleForMs)
+
+      return stalled[0]?.name ?? null
+    },
+    [sessionsQuery.data],
+  )
+
+  const contextUsagePercent = useMemo(
+    function readContextUsagePercent() {
+      const usage = usageSummaryQuery.data
+      if (!usage || usage.kind !== 'ok') return 0
+      const percent = Math.round(usage.data.usagePercent ?? 0)
+      return Math.max(0, percent)
+    },
+    [usageSummaryQuery.data],
+  )
+
+  const dashboardSignalChips = useMemo<Array<DashboardSignalChip>>(
+    function buildDashboardSignalChips() {
+      const chips: Array<DashboardSignalChip> = []
+
+      if (usageSummary.state === 'ok' && usageSummary.todayCost > 50) {
+        chips.push({
+          id: 'high-spend',
+          text: `⚠ High spend today: ${formatCurrency(usageSummary.todayCost)}`,
+          severity: 'amber',
+        })
+      }
+
+      if (stalledAgentName) {
+        chips.push({
+          id: 'stalled-agent',
+          text: `⚠ Agent stalled: ${stalledAgentName}`,
+          severity: 'red',
+        })
+      }
+
+      if (contextUsagePercent >= 75) {
+        chips.push({
+          id: 'context-pressure',
+          text: `Memory pressure: ${contextUsagePercent}%`,
+          severity: 'amber',
+        })
+      }
+
+      return chips
+    },
+    [contextUsagePercent, stalledAgentName, usageSummary.state, usageSummary.todayCost],
+  )
+
   const nextTheme = useMemo(
     () => (theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light'),
     [theme],
@@ -491,6 +610,7 @@ export function DashboardScreen() {
               value={`${systemStatus.totalSessions}`}
               subtitle="Total sessions"
               icon={Activity01Icon}
+              color="blue"
             />
           ),
         },
@@ -503,18 +623,7 @@ export function DashboardScreen() {
               value={`${systemStatus.activeAgents}`}
               subtitle="Currently active"
               icon={UserGroupIcon}
-            />
-          ),
-        },
-        {
-          id: 'metric-uptime',
-          size: 'small',
-          node: (
-            <MetricsWidget
-              title="Uptime"
-              value={formatUptime(systemStatus.uptimeSeconds)}
-              subtitle="Gateway runtime"
-              icon={Timer02Icon}
+              color="orange"
             />
           ),
         },
@@ -527,8 +636,22 @@ export function DashboardScreen() {
               value={heroCostQuery.isError ? 'Failed to load' : (heroCostQuery.data ?? '—')}
               subtitle="Billing period"
               icon={ChartLineData02Icon}
+              color="emerald"
               isError={heroCostQuery.isError}
               onRetry={retryHeroCost}
+            />
+          ),
+        },
+        {
+          id: 'metric-uptime',
+          size: 'small',
+          node: (
+            <MetricsWidget
+              title="Uptime"
+              value={formatUptime(systemStatus.uptimeSeconds)}
+              subtitle="Gateway runtime"
+              icon={Timer02Icon}
+              color="violet"
             />
           ),
         },
@@ -561,7 +684,7 @@ export function DashboardScreen() {
         if (widgetId === 'usage-meter') {
           items.push({
             id: widgetId,
-            size: 'large',
+            size: 'medium',
             node: <UsageMeterWidget onRemove={() => removeWidget('usage-meter')} />,
           })
           continue
@@ -627,31 +750,80 @@ export function DashboardScreen() {
     [navigate, removeWidget, visibleIds],
   )
 
-  const mobileSections = useMemo<Array<MobileWidgetSection>>(
-    function buildMobileSections() {
+  const mobileDeepSections = useMemo<Array<MobileWidgetSection>>(
+    function buildMobileDeepSections() {
       const sections: Array<MobileWidgetSection> = []
+      const deepTierOrder = widgetOrder.filter((id) =>
+        ['activity', 'agents', 'sessions', 'tasks', 'skills', 'usage'].includes(id),
+      )
 
-      for (const widgetId of widgetOrder) {
-        if (widgetId === 'now-card') {
+      for (const widgetId of deepTierOrder) {
+        if (widgetId === 'activity') {
+          if (!visibleWidgetSet.has('activity-log')) continue
           sections.push({
             id: widgetId,
-            label: 'Now',
+            label: 'Activity',
             content: (
-              <NowCard
-                gatewayConnected={systemStatus.gateway.connected}
-                activeAgents={systemStatus.activeAgents}
-                activeTasks={taskSummary.inProgress}
-              />
+              <div className="w-full">
+                <ActivityLogWidget onRemove={() => removeWidget('activity-log')} />
+              </div>
             ),
           })
           continue
         }
 
-        if (widgetId === 'metrics') {
+        if (widgetId === 'agents') {
+          if (!visibleWidgetSet.has('agent-status')) continue
           sections.push({
             id: widgetId,
-            label: 'Metrics',
-            content: <WidgetGrid items={metricItems} />,
+            label: 'Agents',
+            content: (
+              <div className="w-full">
+                <AgentStatusWidget onRemove={() => removeWidget('agent-status')} />
+              </div>
+            ),
+          })
+          continue
+        }
+
+        if (widgetId === 'sessions') {
+          if (!visibleWidgetSet.has('recent-sessions')) continue
+          sections.push({
+            id: widgetId,
+            label: 'Sessions',
+            content: (
+              <div className="w-full">
+                <RecentSessionsWidget
+                  onOpenSession={(sessionKey) =>
+                    navigate({
+                      to: '/chat/$sessionKey',
+                      params: { sessionKey },
+                    })
+                  }
+                  onRemove={() => removeWidget('recent-sessions')}
+                />
+              </div>
+            ),
+          })
+          continue
+        }
+
+        if (widgetId === 'tasks') {
+          if (!visibleWidgetSet.has('tasks')) continue
+          sections.push({
+            id: widgetId,
+            label: 'Tasks',
+            content: (
+              <div className="w-full">
+                <CollapsibleWidget
+                  title="Tasks"
+                  summary={`Tasks: ${taskSummary.inProgress} in progress • ${taskSummary.done} done`}
+                  defaultOpen
+                >
+                  <TasksWidget onRemove={() => removeWidget('tasks')} />
+                </CollapsibleWidget>
+              </div>
+            ),
           })
           continue
         }
@@ -717,90 +889,6 @@ export function DashboardScreen() {
               </div>
             ),
           })
-          continue
-        }
-
-        if (widgetId === 'tasks') {
-          if (!visibleWidgetSet.has('tasks')) continue
-          sections.push({
-            id: widgetId,
-            label: 'Tasks',
-            content: (
-              <div className="w-full">
-                <CollapsibleWidget
-                  title="Tasks"
-                  summary={`Tasks: ${taskSummary.backlog} backlog • ${taskSummary.inProgress} in progress • ${taskSummary.done} done`}
-                  defaultOpen
-                >
-                  <TasksWidget onRemove={() => removeWidget('tasks')} />
-                </CollapsibleWidget>
-              </div>
-            ),
-          })
-          continue
-        }
-
-        if (widgetId === 'agents') {
-          if (!visibleWidgetSet.has('agent-status')) continue
-          sections.push({
-            id: widgetId,
-            label: 'Agents',
-            content: (
-              <div className="w-full">
-                <AgentStatusWidget onRemove={() => removeWidget('agent-status')} />
-              </div>
-            ),
-          })
-          continue
-        }
-
-        if (widgetId === 'sessions') {
-          if (!visibleWidgetSet.has('recent-sessions')) continue
-          sections.push({
-            id: widgetId,
-            label: 'Sessions',
-            content: (
-              <div className="w-full">
-                <RecentSessionsWidget
-                  onOpenSession={(sessionKey) =>
-                    navigate({
-                      to: '/chat/$sessionKey',
-                      params: { sessionKey },
-                    })
-                  }
-                  onRemove={() => removeWidget('recent-sessions')}
-                />
-              </div>
-            ),
-          })
-          continue
-        }
-
-        if (widgetId === 'notifications') {
-          if (!visibleWidgetSet.has('notifications')) continue
-          sections.push({
-            id: widgetId,
-            label: 'Notifications',
-            content: (
-              <div className="w-full">
-                <NotificationsWidget onRemove={() => removeWidget('notifications')} />
-              </div>
-            ),
-          })
-          continue
-        }
-
-        if (widgetId === 'activity') {
-          if (!visibleWidgetSet.has('activity-log')) continue
-          sections.push({
-            id: widgetId,
-            label: 'Activity',
-            content: (
-              <div className="w-full">
-                <ActivityLogWidget onRemove={() => removeWidget('activity-log')} />
-              </div>
-            ),
-          })
         }
       }
 
@@ -808,13 +896,9 @@ export function DashboardScreen() {
     },
     [
       enabledSkillsCount,
-      metricItems,
       navigate,
       removeWidget,
       retryUsageSummary,
-      systemStatus.activeAgents,
-      systemStatus.gateway.connected,
-      taskSummary.backlog,
       taskSummary.done,
       taskSummary.inProgress,
       usageSummary.state,
@@ -826,8 +910,8 @@ export function DashboardScreen() {
 
   const moveMobileSection = useCallback(
     (fromVisibleIndex: number, toVisibleIndex: number) => {
-      const fromSection = mobileSections[fromVisibleIndex]
-      const toSection = mobileSections[toVisibleIndex]
+      const fromSection = mobileDeepSections[fromVisibleIndex]
+      const toSection = mobileDeepSections[toVisibleIndex]
       if (!fromSection || !toSection || fromSection.id === toSection.id) return
 
       const fromOrderIndex = widgetOrder.indexOf(fromSection.id)
@@ -836,7 +920,7 @@ export function DashboardScreen() {
 
       moveWidget(fromOrderIndex, toOrderIndex)
     },
-    [mobileSections, moveWidget, widgetOrder],
+    [mobileDeepSections, moveWidget, widgetOrder],
   )
 
   return (
@@ -1011,9 +1095,25 @@ export function DashboardScreen() {
             <ActivityTicker />
           </div>
 
-          {!isMobile ? (
-            <WidgetGrid items={metricItems} className="mb-3 md:mb-4" />
+          {!isMobile && dashboardSignalChips.length > 0 ? (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {dashboardSignalChips.map((chip) => (
+                <span
+                  key={chip.id}
+                  className={cn(
+                    'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium',
+                    chip.severity === 'red'
+                      ? 'border-red-200 bg-red-100/75 text-red-700'
+                      : 'border-amber-200 bg-amber-100/75 text-amber-700',
+                  )}
+                >
+                  {chip.text}
+                </span>
+              ))}
+            </div>
           ) : null}
+
+          {!isMobile ? <WidgetGrid items={metricItems} className="mb-3 md:mb-4" /> : null}
 
           {/* Inline widget controls — desktop only (mobile controls are in header) */}
           {!isMobile && (
@@ -1034,55 +1134,87 @@ export function DashboardScreen() {
 
           <div>
             {isMobile ? (
-              <div className="space-y-3">
-                {mobileSections.map((section, visibleIndex) => {
-                  const canMoveUp = visibleIndex > 0
-                  const canMoveDown = visibleIndex < mobileSections.length - 1
+              <div className="flex flex-col gap-6">
+                <div className="space-y-2">
+                  <NowCard
+                    gatewayConnected={systemStatus.gateway.connected}
+                    activeAgents={systemStatus.activeAgents}
+                    activeTasks={taskSummary.inProgress}
+                  />
+                </div>
 
-                  return (
-                    <div key={section.id} className="relative w-full rounded-xl">
-                      {mobileEditMode ? (
-                      <div className="absolute top-1 right-1 z-10 flex gap-0.5 rounded-full border border-primary-200/80 bg-primary-50/90 p-0.5 shadow-sm">
-                        {canMoveUp ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              moveMobileSection(visibleIndex, visibleIndex - 1)
-                            }
-                            className="inline-flex size-5 items-center justify-center rounded-full text-primary-400 transition-colors hover:text-primary-600"
-                            aria-label={`Move ${section.label} up`}
-                            title={`Move ${section.label} up`}
-                          >
-                            <HugeiconsIcon
-                              icon={ArrowUp02Icon}
-                              size={12}
-                              strokeWidth={1.8}
-                            />
-                          </button>
-                        ) : null}
-                        {canMoveDown ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              moveMobileSection(visibleIndex, visibleIndex + 1)
-                            }
-                            className="inline-flex size-5 items-center justify-center rounded-full text-primary-400 transition-colors hover:text-primary-600"
-                            aria-label={`Move ${section.label} down`}
-                            title={`Move ${section.label} down`}
-                          >
-                            <HugeiconsIcon
-                              icon={ArrowDown01Icon}
-                              size={12}
-                              strokeWidth={1.8}
-                            />
-                          </button>
-                        ) : null}
-                      </div>
-                      ) : null}
-                      {section.content}
+                <div className="space-y-2">
+                  {dashboardSignalChips.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {dashboardSignalChips.map((chip) => (
+                        <span
+                          key={chip.id}
+                          className={cn(
+                            'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium',
+                            chip.severity === 'red'
+                              ? 'border-red-200 bg-red-100/75 text-red-700'
+                              : 'border-amber-200 bg-amber-100/75 text-amber-700',
+                          )}
+                        >
+                          {chip.text}
+                        </span>
+                      ))}
                     </div>
-                  )
-                })}
+                  ) : null}
+                  <WidgetGrid items={metricItems} className="gap-2" />
+                </div>
+
+                <div className="space-y-2">
+                  {mobileDeepSections.map((section, visibleIndex) => {
+                    const canMoveUp = visibleIndex > 0
+                    const canMoveDown =
+                      visibleIndex < mobileDeepSections.length - 1
+
+                    return (
+                      <div key={section.id} className="relative w-full rounded-xl">
+                        {mobileEditMode ? (
+                          <div className="absolute right-1 top-1 z-10 flex gap-0.5 rounded-full border border-primary-200/80 bg-primary-50/90 p-0.5 shadow-sm">
+                            {canMoveUp ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  moveMobileSection(visibleIndex, visibleIndex - 1)
+                                }
+                                className="inline-flex size-5 items-center justify-center rounded-full text-primary-400 transition-colors hover:text-primary-600"
+                                aria-label={`Move ${section.label} up`}
+                                title={`Move ${section.label} up`}
+                              >
+                                <HugeiconsIcon
+                                  icon={ArrowUp02Icon}
+                                  size={12}
+                                  strokeWidth={1.8}
+                                />
+                              </button>
+                            ) : null}
+                            {canMoveDown ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  moveMobileSection(visibleIndex, visibleIndex + 1)
+                                }
+                                className="inline-flex size-5 items-center justify-center rounded-full text-primary-400 transition-colors hover:text-primary-600"
+                                aria-label={`Move ${section.label} down`}
+                                title={`Move ${section.label} down`}
+                              >
+                                <HugeiconsIcon
+                                  icon={ArrowDown01Icon}
+                                  size={12}
+                                  strokeWidth={1.8}
+                                />
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {section.content}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             ) : (
               <WidgetGrid items={desktopWidgetItems} />

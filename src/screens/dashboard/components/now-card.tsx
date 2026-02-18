@@ -1,15 +1,6 @@
-import { Activity01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { Activity01Icon } from '@hugeicons/core-free-icons'
 import { WidgetShell } from './widget-shell'
-import type { ActivityEvent } from '@/types/activity-event'
 import { cn } from '@/lib/utils'
-
-type RecentActivityResponse = {
-  events?: Array<unknown>
-  connected?: unknown
-}
 
 type NowCardProps = {
   gatewayConnected: boolean
@@ -20,101 +11,6 @@ type NowCardProps = {
   onRemove?: () => void
 }
 
-function readString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-function readNumber(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return 0
-}
-
-function normalizeRecentEvent(value: unknown): ActivityEvent | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  const source = value as Record<string, unknown>
-  const id = readString(source.id)
-  const title = readString(source.title)
-  const timestamp = readNumber(source.timestamp)
-  const detail = readString(source.detail) || undefined
-  const type = source.type as ActivityEvent['type'] | undefined
-  const level = source.level as ActivityEvent['level'] | undefined
-
-  if (!id || !title || timestamp <= 0 || !type || !level) return null
-
-  return {
-    id,
-    title,
-    timestamp,
-    detail,
-    type,
-    level,
-  }
-}
-
-async function fetchNowCardActivity(): Promise<{
-  connected: boolean | null
-  latest: ActivityEvent | null
-}> {
-  const response = await fetch('/api/events/recent?count=12')
-  if (!response.ok) throw new Error('Unable to load activity')
-
-  const payload = (await response.json()) as RecentActivityResponse
-  const rows = Array.isArray(payload.events) ? payload.events : []
-  const events = rows
-    .map(normalizeRecentEvent)
-    .filter((event): event is ActivityEvent => event !== null)
-    .sort((left, right) => right.timestamp - left.timestamp)
-
-  return {
-    connected:
-      typeof payload.connected === 'boolean' ? payload.connected : null,
-    latest: events[0] ?? null,
-  }
-}
-
-/** Sanitize event detail — strip raw JSON payloads that leak from gateway */
-function toFriendlyAgentName(agentId: string): string {
-  const segments = agentId.split(':').filter(Boolean)
-  const suffix = segments[segments.length - 1] ?? agentId
-  if (suffix.length === 0) return agentId
-  return `${suffix.charAt(0).toUpperCase()}${suffix.slice(1)}`
-}
-
-function formatAgentNames(text: string): string {
-  return text.replace(
-    /\bagent:[a-z0-9_-]+(?::[a-z0-9_-]+)+\b/gi,
-    toFriendlyAgentName,
-  )
-}
-
-function sanitizeDetail(text: string): string {
-  const trimmed = text.trim()
-  // If it looks like raw JSON, don't show it
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return ''
-  const withFriendlyAgentName = formatAgentNames(trimmed)
-  // Truncate overly long details
-  if (withFriendlyAgentName.length > 120) {
-    return `${withFriendlyAgentName.slice(0, 117)}…`
-  }
-  return withFriendlyAgentName
-}
-
-function toRelativeTime(timestamp: number): string {
-  const diffMs = Math.max(0, Date.now() - timestamp)
-  const seconds = Math.floor(diffMs / 1000)
-  if (seconds < 45) return 'just now'
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
 export function NowCard({
   gatewayConnected,
   activeAgents,
@@ -123,44 +19,9 @@ export function NowCard({
   editMode,
   onRemove,
 }: NowCardProps) {
-  const navigate = useNavigate()
-
-  const recentActivityQuery = useQuery({
-    queryKey: ['dashboard', 'now-card-activity'],
-    queryFn: fetchNowCardActivity,
-    retry: false,
-    refetchInterval: 15_000,
-  })
-
-  const latestEvent = recentActivityQuery.data?.latest ?? null
-  const streamConnected = recentActivityQuery.data?.connected ?? null
-
-  const connectionState = !gatewayConnected
-    ? 'offline'
-    : streamConnected === false || recentActivityQuery.isError
-      ? 'degraded'
-      : 'connected'
-
-  const connectionLabel =
-    connectionState === 'connected'
-      ? 'Connected'
-      : connectionState === 'degraded'
-        ? 'Degraded'
-        : 'Offline'
-
-  const connectionDotClass =
-    connectionState === 'connected'
-      ? 'bg-emerald-500'
-      : connectionState === 'degraded'
-        ? 'bg-amber-500'
-        : 'bg-red-500'
-
-  const connectionTextClass =
-    connectionState === 'connected'
-      ? 'text-emerald-700'
-      : connectionState === 'degraded'
-        ? 'text-amber-700'
-        : 'text-red-700'
+  const connectionLabel = gatewayConnected ? 'Connected' : 'Disconnected'
+  const connectionTextClass = gatewayConnected ? 'text-emerald-700' : 'text-red-700'
+  const connectionDotClass = gatewayConnected ? 'bg-emerald-500' : 'bg-red-500'
 
   return (
     <WidgetShell
@@ -174,10 +35,18 @@ export function NowCard({
         className,
       )}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-primary-500">
+            Agents Active
+          </p>
+          <p className="font-mono text-4xl font-semibold leading-none text-ink tabular-nums">
+            {activeAgents}
+          </p>
+        </div>
         <span
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-100/70 px-2 py-0.5 text-xs font-medium',
+            'inline-flex items-center gap-1.5 rounded-full border border-primary-200/80 bg-primary-100/70 px-2 py-0.5 text-xs font-medium',
             connectionTextClass,
           )}
         >
@@ -185,40 +54,26 @@ export function NowCard({
             className={cn(
               'size-1.5 rounded-full',
               connectionDotClass,
-              connectionState === 'connected' && 'animate-pulse',
+              gatewayConnected && 'animate-pulse',
             )}
           />
           {connectionLabel}
         </span>
       </div>
 
-      <p className="mt-2 text-xs text-primary-600">
-        {activeAgents} agents active • {activeTasks} in progress
-      </p>
-
-      <p className="mt-2 line-clamp-1 text-sm font-medium text-ink">
-        {latestEvent
-          ? `${sanitizeDetail(latestEvent.detail ?? '') || sanitizeDetail(latestEvent.title)} • ${toRelativeTime(latestEvent.timestamp)}`
-          : 'No recent activity yet'}
-      </p>
-
-      <div className="mt-3 flex gap-2">
-        <button
-          type="button"
-          onClick={() => void navigate({ to: '/agent-swarm' })}
-          className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-primary-200 bg-primary-50 px-2.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100"
-        >
-          Open Agent Hub
-          <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={1.5} />
-        </button>
-        <button
-          type="button"
-          onClick={() => void navigate({ to: '/activity' })}
-          className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-primary-200 bg-primary-50/80 px-2.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100"
-        >
-          View Activity
-          <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={1.5} />
-        </button>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-lg border border-primary-200/75 bg-primary-100/50 px-3 py-2">
+          <p className="text-[11px] text-primary-500">System Health</p>
+          <p className={cn('text-sm font-semibold', connectionTextClass)}>
+            {connectionLabel}
+          </p>
+        </div>
+        <div className="rounded-lg border border-primary-200/75 bg-primary-100/50 px-3 py-2">
+          <p className="text-[11px] text-primary-500">Tasks In Progress</p>
+          <p className="font-mono text-sm font-semibold text-ink tabular-nums">
+            {activeTasks}
+          </p>
+        </div>
       </div>
     </WidgetShell>
   )

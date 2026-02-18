@@ -1,38 +1,8 @@
-// Data source: GET /api/usage — all-time token counts + cost breakdown by provider
-// Note: This shows ALL-TIME totals. The hero cost metric uses GET /api/cost
-// for billing-period spend, so the totals can differ by design.
 import { ChartLineData02Icon } from '@hugeicons/core-free-icons'
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { WidgetShell } from './widget-shell'
 import { cn } from '@/lib/utils'
-
-type ProviderUsageLine = {
-  type: 'progress' | 'text' | 'badge'
-  label: string
-  used?: number
-  limit?: number
-  format?: 'percent' | 'dollars' | 'tokens'
-  value?: string
-  color?: string
-  resetsAt?: string
-}
-
-type ProviderUsageResult = {
-  provider: string
-  displayName: string
-  status: 'ok' | 'missing_credentials' | 'auth_expired' | 'error'
-  message?: string
-  plan?: string
-  lines: Array<ProviderUsageLine>
-  updatedAt: number
-}
-
-type ProviderUsageApiResponse = {
-  ok: boolean
-  updatedAt: number
-  providers: Array<ProviderUsageResult>
-}
 
 type ProviderUsage = {
   provider: string
@@ -80,8 +50,9 @@ function readString(value: unknown): string {
 }
 
 function toRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object')
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as Record<string, unknown>
+  }
   return {}
 }
 
@@ -91,15 +62,14 @@ function parseProviderUsage(provider: string, value: unknown): ProviderUsage {
   const output = readNumber(source.output)
   const cacheRead = readNumber(source.cacheRead)
   const cacheWrite = readNumber(source.cacheWrite)
-  const inputOutput = input + output
-  const cached = cacheRead + cacheWrite
   const inputCost = readNumber(source.inputCost)
   const outputCost = readNumber(source.outputCost)
+
   return {
     provider,
     total: readNumber(source.total),
-    inputOutput,
-    cached,
+    inputOutput: input + output,
+    cached: cacheRead + cacheWrite,
     cost: readNumber(source.cost),
     directCost: inputCost + outputCost,
     percentUsed: readNumber(source.percentUsed) || undefined,
@@ -215,13 +185,7 @@ export async function fetchUsage(): Promise<UsageQueryResult> {
 }
 
 function formatTokens(tokens: number): string {
-  return `${new Intl.NumberFormat().format(tokens)}`
-}
-
-function formatCompactTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`
-  return `${tokens}`
+  return new Intl.NumberFormat().format(Math.max(0, Math.round(tokens)))
 }
 
 function formatUsd(amount: number): string {
@@ -244,8 +208,7 @@ export function UsageMeterWidget({
   onRemove,
   editMode,
 }: UsageMeterWidgetProps) {
-  const [view, setView] = useState<'gateway' | 'providers'>('gateway')
-
+  const [view, setView] = useState<'tokens' | 'cost'>('tokens')
   const usageQuery = useQuery({
     queryKey: ['dashboard', 'usage'],
     queryFn: fetchUsage,
@@ -253,394 +216,101 @@ export function UsageMeterWidget({
     refetchInterval: 30_000,
   })
 
-  const providerQuery = useQuery({
-    queryKey: ['dashboard', 'provider-usage'],
-    queryFn: async (): Promise<ProviderUsageApiResponse | null> => {
-      try {
-        const res = await fetch('/api/provider-usage')
-        if (!res.ok) return null
-        return (await res.json()) as ProviderUsageApiResponse
-      } catch {
-        return null
-      }
-    },
-    retry: false,
-    refetchInterval: 30_000,
-  })
-
-  const activeProviders = providerQuery.data?.providers ?? []
-  const providerCount = activeProviders.length
-
-  const [loadingTimedOut, setLoadingTimedOut] = useState(false)
-  useEffect(() => {
-    if (usageQuery.data) {
-      setLoadingTimedOut(false)
-      return
-    }
-    const timer = setTimeout(() => setLoadingTimedOut(true), 5000)
-    return () => clearTimeout(timer)
-  }, [usageQuery.data])
-
   const queryResult = usageQuery.data
   const usageData = queryResult?.kind === 'ok' ? queryResult.data : null
-  const rows = (usageData?.providers ?? []).slice(0, 4)
 
-  const maxUsage = useMemo(
-    function computeMaxUsage() {
-      return rows.reduce(function reduceMax(currentMax, row) {
-        return row.inputOutput > currentMax ? row.inputOutput : currentMax
-      }, 0)
+  const usagePercent = useMemo(
+    function computeUsagePercent() {
+      const value = usageData?.usagePercent ?? 0
+      return Math.max(0, Math.min(100, Math.round(value)))
     },
-    [rows],
+    [usageData?.usagePercent],
   )
 
-  const radius = 52
-  const circumference = 2 * Math.PI * radius
-  const usagePercent = usageData?.usagePercent ?? 0
-  const progressOffset = circumference * (1 - usagePercent / 100)
+  const tokenLimit = useMemo(
+    function computeTokenLimit() {
+      if (!usageData) return 0
+      if (usagePercent <= 0) return usageData.totalUsage
+      return Math.max(usageData.totalUsage, Math.round(usageData.totalUsage / (usagePercent / 100)))
+    },
+    [usageData, usagePercent],
+  )
+
+  const subtitle = usageData
+    ? `${formatTokens(usageData.totalUsage)} / ${formatTokens(tokenLimit)} tokens`
+    : 'Usage unavailable'
 
   return (
     <WidgetShell
-      size="large"
+      size="medium"
       title="Usage Meter"
       icon={ChartLineData02Icon}
       action={
-        <div className="flex items-center gap-1">
-          <div className="flex items-center gap-0.5 rounded-full border border-primary-200 bg-primary-100/70 p-0.5 text-[10px]">
-            {(['gateway', 'providers'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setView(tab)
-                }}
-                className={cn(
-                  'rounded-full px-2 py-0.5 font-medium transition',
-                  view === tab
-                    ? 'bg-accent-100 text-accent-700 shadow-sm'
-                    : 'text-primary-500 hover:text-primary-700',
-                )}
-              >
-                {tab === 'gateway' ? 'Gateway' : 'Providers'}
-              </button>
-            ))}
-          </div>
-          <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-100/70 px-2 py-0.5 text-[11px] font-medium text-primary-500 tabular-nums">
-            {providerCount}
-          </span>
+        <div className="inline-flex items-center gap-0.5 rounded-full border border-primary-200 bg-primary-100/70 p-0.5 text-[10px]">
+          {(['tokens', 'cost'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setView(tab)
+              }}
+              className={cn(
+                'rounded-full px-2 py-0.5 font-medium transition-colors',
+                view === tab
+                  ? 'bg-accent-100 text-accent-700 shadow-sm'
+                  : 'text-primary-500 hover:text-primary-700',
+              )}
+            >
+              {tab === 'tokens' ? 'Tokens' : 'Cost'}
+            </button>
+          ))}
         </div>
       }
       onRemove={onRemove}
       editMode={editMode}
       className="h-full"
     >
-      {view === 'providers' ? (
-        <div className="space-y-3">
-          {activeProviders.length === 0 ? (
-            <div className="rounded-xl border border-primary-200 bg-primary-100/45 p-4">
-              <p className="text-sm font-semibold text-ink">
-                No provider usage data available
-              </p>
-              <p className="mt-1 text-sm text-primary-600 text-pretty">
-                Provider usage limits and quotas will appear here once
-                authenticated.
-              </p>
-              <p className="mt-2 hidden font-mono text-xs text-primary-500 sm:block">
-                Tip: Run{' '}
-                <code className="rounded bg-primary-200/70 px-1 py-0.5">
-                  claude
-                </code>{' '}
-                in your terminal to authenticate
-              </p>
-            </div>
-          ) : (
-            activeProviders.map((provider, providerIndex) => (
-              <div
-                key={provider.provider}
-                className={cn(
-                  'rounded-xl border border-primary-200 p-3',
-                  providerIndex % 2 === 0
-                    ? 'bg-primary-50/90'
-                    : 'bg-primary-100/55',
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-ink">
-                      {provider.displayName}
-                    </span>
-                    {provider.plan && (
-                      <span className="rounded-full border border-accent-200 bg-accent-100/55 px-1.5 py-0.5 text-[10px] font-medium text-accent-700">
-                        {provider.plan}
-                      </span>
-                    )}
-                  </div>
-                  <span
-                    className={cn(
-                      'rounded-full px-2 py-0.5 text-[10px] font-medium',
-                      provider.status === 'ok'
-                        ? 'bg-accent-100 text-accent-700'
-                        : provider.status === 'auth_expired'
-                          ? 'bg-primary-200/70 text-primary-700'
-                          : 'bg-red-100 text-red-700',
-                    )}
-                  >
-                    {provider.status === 'ok'
-                      ? 'Connected'
-                      : provider.status === 'auth_expired'
-                        ? 'Expired'
-                        : 'Error'}
-                  </span>
-                </div>
-                {provider.status === 'ok' && provider.lines.length > 0 && (
-                  <div className="mt-2.5 space-y-2">
-                    {provider.lines.map((line, i) => {
-                      if (
-                        line.type === 'progress' &&
-                        line.used !== undefined &&
-                        line.limit !== undefined
-                      ) {
-                        const pct = Math.min(
-                          (line.used / line.limit) * 100,
-                          100,
-                        )
-                        const barColor =
-                          pct >= 90
-                            ? 'bg-red-500'
-                            : pct >= 75
-                              ? 'bg-accent-500'
-                              : 'bg-accent-400'
-                        return (
-                          <div key={`${line.label}-${i}`}>
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-primary-600">
-                                {line.label}
-                              </span>
-                              <span className="font-mono font-medium text-ink tabular-nums">
-                                {line.format === 'dollars'
-                                  ? `$${line.used.toFixed(2)} / $${line.limit.toFixed(2)}`
-                                  : `${Math.round(line.used)}%`}
-                              </span>
-                            </div>
-                            <div className="mt-1 h-1.5 w-full rounded-full bg-primary-200/60">
-                              <div
-                                className={`h-1.5 rounded-full transition-all ${barColor}`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            {line.resetsAt && (
-                              <div className="mt-0.5 font-mono text-[10px] text-primary-400 tabular-nums">
-                                resets{' '}
-                                {new Date(line.resetsAt).toLocaleTimeString(
-                                  [],
-                                  { hour: '2-digit', minute: '2-digit' },
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      }
-                      if (line.type === 'badge') {
-                        return (
-                          <div
-                            key={`${line.label}-${i}`}
-                            className="flex items-center gap-1.5 text-xs"
-                          >
-                            <span className="text-primary-600">
-                              {line.label}
-                            </span>
-                            <span className="rounded-full border border-primary-200 bg-primary-100/70 px-1.5 py-0.5 font-mono text-[10px] font-medium text-primary-700">
-                              {line.value ?? '—'}
-                            </span>
-                          </div>
-                        )
-                      }
-                      return (
-                        <div
-                          key={`${line.label}-${i}`}
-                          className="flex items-center justify-between text-xs"
-                        >
-                          <span className="text-primary-600">{line.label}</span>
-                          <span className="font-mono font-medium text-ink">
-                            {line.value ?? '—'}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-                {provider.status !== 'ok' && provider.message && (
-                  <p className="mt-2 text-xs text-primary-500">
-                    {provider.message}
-                  </p>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      ) : queryResult?.kind === 'unavailable' ? (
-        <div className="rounded-xl border border-primary-200 bg-primary-100/45 p-4 text-sm text-primary-600 text-pretty">
+      {queryResult?.kind === 'unavailable' ? (
+        <div className="rounded-lg border border-primary-200 bg-primary-100/45 px-3 py-3 text-sm text-primary-600">
           {queryResult.message}
         </div>
       ) : queryResult?.kind === 'error' ? (
-        <div className="rounded-xl border border-red-200 bg-red-50/80 p-4 text-sm text-red-700 text-pretty">
+        <div className="rounded-lg border border-red-200 bg-red-50/80 px-3 py-3 text-sm text-red-700">
           {queryResult.message}
         </div>
       ) : !usageData ? (
-        <div className="flex flex-col gap-2 rounded-xl border border-primary-200 bg-primary-100/45 p-4">
-          {loadingTimedOut ? (
-            <>
-              <p className="text-sm font-semibold text-ink">
-                Loading timed out
-              </p>
-              <p className="text-sm text-primary-600">
-                Usage data is taking longer than expected to load.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setLoadingTimedOut(false)
-                  usageQuery.refetch()
-                }}
-                className="mt-1 self-start rounded-lg border border-accent-200 bg-accent-100/70 px-3 py-1.5 text-sm font-medium text-accent-700 transition-colors hover:bg-accent-100"
-              >
-                Retry
-              </button>
-            </>
-          ) : (
-            <div className="flex items-center gap-3">
-              <span
-                className="size-4 animate-spin rounded-full border-2 border-primary-300 border-t-accent-600"
-                role="status"
-                aria-label="Loading"
-              />
-              <span className="text-sm text-primary-600">
-                Loading usage data…
-              </span>
-            </div>
-          )}
-        </div>
-      ) : usageData.providers.length === 0 ? (
-        <div className="rounded-xl border border-primary-200 bg-primary-100/45 p-4">
-          <p className="text-sm font-semibold text-ink">No usage data yet</p>
-          <p className="mt-1 text-sm text-primary-600 text-pretty">
-            Start a conversation to see token usage and costs appear here.
-          </p>
+        <div className="rounded-lg border border-primary-200 bg-primary-100/45 px-3 py-3 text-sm text-primary-600">
+          Loading usage data…
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-[220px_minmax(0,1fr)]">
-          <div className="flex flex-col items-center justify-center rounded-xl border border-primary-200 bg-primary-100/45 p-3">
-            <div className="relative">
-              <svg
-                viewBox="0 0 140 140"
-                className="size-36 -rotate-90"
-                role="img"
-                aria-label={
-                  usageData.usagePercent !== undefined
-                    ? `Provider usage ${Math.round(usageData.usagePercent)}%`
-                    : `Total usage ${formatTokens(usageData.totalUsage)}`
-                }
-              >
-                <circle
-                  cx="70"
-                  cy="70"
-                  r={radius}
-                  fill="none"
-                  className="stroke-primary-200"
-                  strokeWidth="14"
-                />
-                <circle
-                  cx="70"
-                  cy="70"
-                  r={radius}
-                  fill="none"
-                  className="stroke-accent-600"
-                  strokeWidth="14"
-                  strokeLinecap="round"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={progressOffset}
-                />
-              </svg>
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                {usageData.usagePercent !== undefined ? (
-                  <span className="font-mono text-3xl font-semibold text-ink tabular-nums">
-                    {Math.round(usageData.usagePercent)}%
-                  </span>
-                ) : (
-                  <span className="font-mono text-sm font-semibold text-ink tabular-nums">
-                    {formatCompactTokens(usageData.totalInputOutput)}
-                  </span>
-                )}
-                <span className="text-xs text-primary-600 text-pretty">
-                  {usageData.usagePercent !== undefined
-                    ? 'used'
-                    : 'in/out tokens'}
-                </span>
-              </div>
-            </div>
-            <div className="mt-3 w-full space-y-1.5">
-              <div className="rounded-lg border border-primary-200 bg-primary-50/80 px-3 py-2">
-                <p className="text-xs text-primary-600 text-pretty">
-                  Direct Cost
-                </p>
-                <p className="font-mono text-lg font-semibold text-ink tabular-nums">
-                  {formatUsd(usageData.totalDirectCost)}
-                </p>
-              </div>
-              <div className="rounded-lg border border-primary-200 bg-primary-50/60 px-3 py-1.5">
-                <p className="text-[11px] text-primary-500 text-pretty">
-                  + Cache Cost
-                </p>
-                <p className="font-mono text-sm text-primary-600 tabular-nums">
-                  {formatUsd(usageData.totalCost - usageData.totalDirectCost)}
-                </p>
-              </div>
-            </div>
+        <div className="space-y-2.5">
+          <div>
+            <p className="font-mono text-2xl font-bold leading-none text-ink tabular-nums">
+              {usagePercent}%
+            </p>
+            <p className="mt-1 text-xs text-primary-500">Usage</p>
           </div>
 
-          <div className="space-y-3">
-            {rows.map(function mapRow(row, index) {
-              const widthPercent =
-                maxUsage > 0 ? (row.inputOutput / maxUsage) * 100 : 0
-
-              return (
-                <div
-                  key={row.provider}
-                  className={cn(
-                    'space-y-1.5 rounded-lg border border-primary-200 px-3 py-2.5',
-                    index % 2 === 0 ? 'bg-primary-50/90' : 'bg-primary-100/55',
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="truncate text-sm font-semibold text-ink tabular-nums">
-                      {row.provider}
-                    </span>
-                    <span className="shrink-0 font-mono text-xs text-primary-600 tabular-nums">
-                      {formatCompactTokens(row.inputOutput)}
-                      {row.cached > 0 ? (
-                        <span
-                          className="ml-1 text-primary-400"
-                          title={`${formatTokens(row.cached)} cached`}
-                        >
-                          +cache
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-primary-200/80">
-                    <div
-                      className={cn(
-                        'h-full rounded-full bg-accent-600 transition-[width] duration-500',
-                        index > 1 && 'bg-accent-500',
-                      )}
-                      style={{ width: `${widthPercent}%` }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200/80 dark:bg-gray-700/70">
+            <div
+              className="h-1.5 rounded-full bg-orange-400 transition-[width] duration-500"
+              style={{ width: `${usagePercent}%` }}
+            />
           </div>
+
+          <p className="text-xs text-primary-500">{subtitle}</p>
+
+          {view === 'cost' ? (
+            <p className="text-xs text-primary-600">
+              {formatUsd(usageData.totalDirectCost)} direct • {formatUsd(usageData.totalCost)} total
+            </p>
+          ) : (
+            <p className="text-xs text-primary-600">
+              In/Out {formatTokens(usageData.totalInputOutput)} • Cached{' '}
+              {formatTokens(usageData.totalCached)}
+            </p>
+          )}
         </div>
       )}
     </WidgetShell>
