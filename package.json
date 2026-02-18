@@ -12,6 +12,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "tauri": "tauri",
     "dev": "vite dev --port 3000",
     "build": "vite build",
     "preview": "vite preview",

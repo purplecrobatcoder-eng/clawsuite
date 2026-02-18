@@ -134,3 +134,7 @@ docs/INDEX.md
 docs/PHASE_*
 docs/specs/
 docs/CLAWSUITE-ROADMAP.md
+
+# Tauri generated files
+src-tauri/gen/
+src-tauri/target/
