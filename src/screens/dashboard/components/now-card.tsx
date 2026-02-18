@@ -1,7 +1,8 @@
-import { ArrowRight01Icon } from '@hugeicons/core-free-icons'
+import { Activity01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { WidgetShell } from './widget-shell'
 import type { ActivityEvent } from '@/types/activity-event'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +16,8 @@ type NowCardProps = {
   activeAgents: number
   activeTasks: number
   className?: string
+  editMode?: boolean
+  onRemove?: () => void
 }
 
 function readString(value: unknown): string {
@@ -117,6 +120,8 @@ export function NowCard({
   activeAgents,
   activeTasks,
   className,
+  editMode,
+  onRemove,
 }: NowCardProps) {
   const navigate = useNavigate()
 
@@ -158,23 +163,33 @@ export function NowCard({
         : 'text-red-700'
 
   return (
-    <section
+    <WidgetShell
+      size="medium"
+      title="Now"
+      icon={Activity01Icon}
+      onRemove={onRemove}
+      editMode={editMode}
       className={cn(
-        'rounded-xl border border-primary-200 bg-white p-3 shadow-sm dark:bg-gray-900 md:hidden',
+        'h-full md:hidden',
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
         <span
           className={cn(
             'inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-100/70 px-2 py-0.5 text-xs font-medium',
             connectionTextClass,
           )}
         >
-          <span className={cn('size-1.5 rounded-full', connectionDotClass)} />
+          <span
+            className={cn(
+              'size-1.5 rounded-full',
+              connectionDotClass,
+              connectionState === 'connected' && 'animate-pulse',
+            )}
+          />
           {connectionLabel}
         </span>
-        <span className="text-[11px] text-primary-500">Now</span>
       </div>
 
       <p className="mt-2 text-xs text-primary-600">
@@ -205,6 +220,6 @@ export function NowCard({
           <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={1.5} />
         </button>
       </div>
-    </section>
+    </WidgetShell>
   )
 }

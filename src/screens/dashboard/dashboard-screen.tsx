@@ -1,11 +1,15 @@
 import {
+  Activity01Icon,
   ArrowDown01Icon,
   ArrowUp02Icon,
+  ChartLineData02Icon,
   Moon02Icon,
   PencilEdit02Icon,
   RefreshIcon,
   Settings01Icon,
   Sun02Icon,
+  Timer02Icon,
+  UserGroupIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery } from '@tanstack/react-query'
@@ -16,27 +20,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react'
-import { Responsive as ResponsiveGridLayout } from 'react-grid-layout/legacy'
-
-import 'react-grid-layout/css/styles.css'
-import 'react-resizable/css/styles.css'
-
-import {
-  GRID_BREAKPOINTS,
-  GRID_COLS,
-  GRID_MARGIN,
-  GRID_ROW_HEIGHT,
-  loadLayouts,
-  resetLayouts,
-  saveLayouts,
-} from './constants/grid-config'
 import { AgentStatusWidget } from './components/agent-status-widget'
 import { ActivityLogWidget } from './components/activity-log-widget'
 import { CollapsibleWidget } from './components/collapsible-widget'
-import { HeroMetricsRow } from './components/hero-metrics-row'
+import { MetricsWidget } from './components/metrics-widget'
 import { NowCard } from './components/now-card'
 import { NotificationsWidget } from './components/notifications-widget'
 import { RecentSessionsWidget } from './components/recent-sessions-widget'
@@ -45,11 +34,11 @@ import { SkillsWidget, fetchInstalledSkills } from './components/skills-widget'
 import { TasksWidget } from './components/tasks-widget'
 import { UsageMeterWidget, fetchUsage } from './components/usage-meter-widget'
 import { AddWidgetPopover } from './components/add-widget-popover'
+import { WidgetGrid, type WidgetGridItem } from './components/widget-grid'
 import { ActivityTicker } from '@/components/activity-ticker'
 import { HeaderAmbientStatus } from './components/header-ambient-status'
 import { NotificationsPopover } from './components/notifications-popover'
 import { useVisibleWidgets } from './hooks/use-visible-widgets'
-import type { ResponsiveLayouts } from 'react-grid-layout'
 import { OpenClawStudioIcon } from '@/components/icons/clawsuite'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { SettingsDialog } from '@/components/settings-dialog'
@@ -127,6 +116,16 @@ function formatCurrency(amount: number): string {
 
 function formatTokenCount(amount: number): string {
   return new Intl.NumberFormat().format(Math.max(0, Math.round(amount)))
+}
+
+function formatUptime(seconds: number): string {
+  if (seconds <= 0) return '—'
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
 }
 
 function toTaskSummaryStatus(
@@ -212,13 +211,10 @@ function formatModelName(raw: string): string {
   return raw
 }
 
-/* Layout config imported from ./constants/grid-config */
-
 // Removed mockSystemStatus - now built entirely from real API data
 
 export function DashboardScreen() {
   const navigate = useNavigate()
-  const [gridLayouts, setGridLayouts] = useState<ResponsiveLayouts>(loadLayouts)
   const [dashSettingsOpen, setDashSettingsOpen] = useState(false)
   const [overflowOpen, setOverflowOpen] = useState(false)
   const { visibleIds, addWidget, removeWidget, resetVisible } =
@@ -226,8 +222,6 @@ export function DashboardScreen() {
   const { order: widgetOrder, moveWidget, resetOrder } = useWidgetReorder()
   const theme = useSettingsStore((state) => state.settings.theme)
   const updateSettings = useSettingsStore((state) => state.updateSettings)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState<number | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [mobileEditMode, setMobileEditMode] = useState(false)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -265,34 +259,7 @@ export function DashboardScreen() {
     return () => window.clearTimeout(timeout)
   }, [isMobile, showLogoTip])
 
-  useEffect(() => {
-    if (!containerRef.current) return
-    // Measure immediately on mount to avoid flash at wrong width
-    setContainerWidth(containerRef.current.getBoundingClientRect().width)
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) setContainerWidth(e.contentRect.width)
-    })
-    ro.observe(containerRef.current)
-    return () => ro.disconnect()
-  }, [])
-
-  const handleLayoutChange = useCallback(function handleLayoutChange(
-    _current: unknown,
-    allLayouts: ResponsiveLayouts,
-  ) {
-    setGridLayouts(function mergeLayoutChanges(previousLayouts) {
-      const mergedLayouts = {
-        ...previousLayouts,
-        ...allLayouts,
-      }
-      saveLayouts(mergedLayouts)
-      return mergedLayouts
-    })
-  }, [])
-
   const handleResetLayout = useCallback(() => {
-    const fresh = resetLayouts()
-    setGridLayouts(fresh)
     resetVisible()
     resetOrder()
     setMobileEditMode(false)
@@ -508,6 +475,158 @@ export function DashboardScreen() {
     return new Set(visibleIds)
   }, [visibleIds])
 
+  const retryHeroCost = useCallback(() => {
+    void heroCostQuery.refetch()
+  }, [heroCostQuery])
+
+  const metricItems = useMemo<Array<WidgetGridItem>>(
+    function buildMetricItems() {
+      return [
+        {
+          id: 'metric-sessions',
+          size: 'small',
+          node: (
+            <MetricsWidget
+              title="Sessions"
+              value={`${systemStatus.totalSessions}`}
+              subtitle="Total sessions"
+              icon={Activity01Icon}
+            />
+          ),
+        },
+        {
+          id: 'metric-agents',
+          size: 'small',
+          node: (
+            <MetricsWidget
+              title="Active Agents"
+              value={`${systemStatus.activeAgents}`}
+              subtitle="Currently active"
+              icon={UserGroupIcon}
+            />
+          ),
+        },
+        {
+          id: 'metric-uptime',
+          size: 'small',
+          node: (
+            <MetricsWidget
+              title="Uptime"
+              value={formatUptime(systemStatus.uptimeSeconds)}
+              subtitle="Gateway runtime"
+              icon={Timer02Icon}
+            />
+          ),
+        },
+        {
+          id: 'metric-cost',
+          size: 'small',
+          node: (
+            <MetricsWidget
+              title="Cost"
+              value={heroCostQuery.isError ? 'Failed to load' : (heroCostQuery.data ?? '—')}
+              subtitle="Billing period"
+              icon={ChartLineData02Icon}
+              isError={heroCostQuery.isError}
+              onRetry={retryHeroCost}
+            />
+          ),
+        },
+      ]
+    },
+    [
+      heroCostQuery.data,
+      heroCostQuery.isError,
+      retryHeroCost,
+      systemStatus.activeAgents,
+      systemStatus.totalSessions,
+      systemStatus.uptimeSeconds,
+    ],
+  )
+
+  const desktopWidgetItems = useMemo<Array<WidgetGridItem>>(
+    function buildDesktopWidgetItems() {
+      const items: Array<WidgetGridItem> = []
+
+      for (const widgetId of visibleIds) {
+        if (widgetId === 'skills') {
+          items.push({
+            id: widgetId,
+            size: 'medium',
+            node: <SkillsWidget onRemove={() => removeWidget('skills')} />,
+          })
+          continue
+        }
+
+        if (widgetId === 'usage-meter') {
+          items.push({
+            id: widgetId,
+            size: 'large',
+            node: <UsageMeterWidget onRemove={() => removeWidget('usage-meter')} />,
+          })
+          continue
+        }
+
+        if (widgetId === 'tasks') {
+          items.push({
+            id: widgetId,
+            size: 'medium',
+            node: <TasksWidget onRemove={() => removeWidget('tasks')} />,
+          })
+          continue
+        }
+
+        if (widgetId === 'agent-status') {
+          items.push({
+            id: widgetId,
+            size: 'medium',
+            node: <AgentStatusWidget onRemove={() => removeWidget('agent-status')} />,
+          })
+          continue
+        }
+
+        if (widgetId === 'recent-sessions') {
+          items.push({
+            id: widgetId,
+            size: 'medium',
+            node: (
+              <RecentSessionsWidget
+                onOpenSession={(sessionKey) =>
+                  navigate({
+                    to: '/chat/$sessionKey',
+                    params: { sessionKey },
+                  })
+                }
+                onRemove={() => removeWidget('recent-sessions')}
+              />
+            ),
+          })
+          continue
+        }
+
+        if (widgetId === 'notifications') {
+          items.push({
+            id: widgetId,
+            size: 'medium',
+            node: <NotificationsWidget onRemove={() => removeWidget('notifications')} />,
+          })
+          continue
+        }
+
+        if (widgetId === 'activity-log') {
+          items.push({
+            id: widgetId,
+            size: 'large',
+            node: <ActivityLogWidget onRemove={() => removeWidget('activity-log')} />,
+          })
+        }
+      }
+
+      return items
+    },
+    [navigate, removeWidget, visibleIds],
+  )
+
   const mobileSections = useMemo<Array<MobileWidgetSection>>(
     function buildMobileSections() {
       const sections: Array<MobileWidgetSection> = []
@@ -532,16 +651,7 @@ export function DashboardScreen() {
           sections.push({
             id: widgetId,
             label: 'Metrics',
-            content: (
-              <HeroMetricsRow
-                totalSessions={systemStatus.totalSessions}
-                activeAgents={systemStatus.activeAgents}
-                uptimeSeconds={systemStatus.uptimeSeconds}
-                totalSpend={heroCostQuery.data ?? '—'}
-                costError={heroCostQuery.isError}
-                onRetryCost={() => heroCostQuery.refetch()}
-              />
-            ),
+            content: <WidgetGrid items={metricItems} />,
           })
           continue
         }
@@ -698,15 +808,12 @@ export function DashboardScreen() {
     },
     [
       enabledSkillsCount,
-      heroCostQuery.data,
-      heroCostQuery.isError,
+      metricItems,
       navigate,
       removeWidget,
       retryUsageSummary,
       systemStatus.activeAgents,
       systemStatus.gateway.connected,
-      systemStatus.totalSessions,
-      systemStatus.uptimeSeconds,
       taskSummary.backlog,
       taskSummary.done,
       taskSummary.inProgress,
@@ -714,7 +821,6 @@ export function DashboardScreen() {
       usageSummary.text,
       visibleWidgetSet,
       widgetOrder,
-      heroCostQuery.refetch,
     ],
   )
 
@@ -906,14 +1012,7 @@ export function DashboardScreen() {
           </div>
 
           {!isMobile ? (
-            <HeroMetricsRow
-              totalSessions={systemStatus.totalSessions}
-              activeAgents={systemStatus.activeAgents}
-              uptimeSeconds={systemStatus.uptimeSeconds}
-              totalSpend={heroCostQuery.data ?? '—'}
-              costError={heroCostQuery.isError}
-              onRetryCost={() => heroCostQuery.refetch()}
-            />
+            <WidgetGrid items={metricItems} className="mb-3 md:mb-4" />
           ) : null}
 
           {/* Inline widget controls — desktop only (mobile controls are in header) */}
@@ -933,7 +1032,7 @@ export function DashboardScreen() {
             </div>
           )}
 
-          <div ref={containerRef}>
+          <div>
             {isMobile ? (
               <div className="space-y-3">
                 {mobileSections.map((section, visibleIndex) => {
@@ -985,88 +1084,8 @@ export function DashboardScreen() {
                   )
                 })}
               </div>
-            ) : containerWidth != null && containerWidth > 0 ? (
-              <ResponsiveGridLayout
-                className="layout"
-                layouts={gridLayouts}
-                breakpoints={GRID_BREAKPOINTS}
-                cols={GRID_COLS}
-                rowHeight={GRID_ROW_HEIGHT}
-                width={containerWidth}
-                onLayoutChange={handleLayoutChange}
-                draggableHandle=".widget-drag-handle"
-                isResizable={false}
-                isDraggable
-                compactType="vertical"
-                margin={GRID_MARGIN}
-              >
-                {visibleIds.includes('skills') ? (
-                  <div key="skills" className="h-full">
-                    <SkillsWidget
-                      draggable
-                      onRemove={() => removeWidget('skills')}
-                    />
-                  </div>
-                ) : null}
-                {visibleIds.includes('usage-meter') ? (
-                  <div key="usage-meter" className="h-full">
-                    <UsageMeterWidget
-                      draggable
-                      onRemove={() => removeWidget('usage-meter')}
-                    />
-                  </div>
-                ) : null}
-                {visibleIds.includes('tasks') ? (
-                  <div key="tasks" className="h-full">
-                    <TasksWidget
-                      draggable
-                      onRemove={() => removeWidget('tasks')}
-                    />
-                  </div>
-                ) : null}
-                {visibleIds.includes('agent-status') ? (
-                  <div key="agent-status" className="h-full">
-                    <AgentStatusWidget
-                      draggable
-                      onRemove={() => removeWidget('agent-status')}
-                    />
-                  </div>
-                ) : null}
-                {visibleIds.includes('recent-sessions') ? (
-                  <div key="recent-sessions" className="h-full">
-                    <RecentSessionsWidget
-                      onOpenSession={(sessionKey) =>
-                        navigate({
-                          to: '/chat/$sessionKey',
-                          params: { sessionKey },
-                        })
-                      }
-                      draggable
-                      onRemove={() => removeWidget('recent-sessions')}
-                    />
-                  </div>
-                ) : null}
-                {visibleIds.includes('notifications') ? (
-                  <div key="notifications" className="h-full">
-                    <NotificationsWidget
-                      draggable
-                      onRemove={() => removeWidget('notifications')}
-                    />
-                  </div>
-                ) : null}
-                {visibleIds.includes('activity-log') ? (
-                  <div key="activity-log" className="h-full">
-                    <ActivityLogWidget
-                      draggable
-                      onRemove={() => removeWidget('activity-log')}
-                    />
-                  </div>
-                ) : null}
-              </ResponsiveGridLayout>
             ) : (
-              <div className="flex h-64 items-center justify-center text-primary-400">
-                Loading dashboard…
-              </div>
+              <WidgetGrid items={desktopWidgetItems} />
             )}
           </div>
         </section>

@@ -15,6 +15,7 @@ type SessionsApiResponse = {
 type NotificationsWidgetProps = {
   draggable?: boolean
   onRemove?: () => void
+  editMode?: boolean
 }
 
 function readString(value: unknown): string {
@@ -106,8 +107,9 @@ function toNotifications(
 }
 
 export function NotificationsWidget({
-  draggable = false,
+  draggable: _draggable = false,
   onRemove,
+  editMode,
 }: NotificationsWidgetProps) {
   const notificationsQuery = useQuery({
     queryKey: ['dashboard', 'notifications'],
@@ -126,18 +128,18 @@ export function NotificationsWidget({
   )
 
   return (
-    <DashboardGlassCard
+    <WidgetShell
+      size="medium"
       title="Notifications"
-      description="Session lifecycle events — starts, stops, and errors."
       icon={Notification03Icon}
-      titleAccessory={
+      action={
         <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-100/70 px-2 py-0.5 text-[11px] font-medium text-primary-500 tabular-nums">
           {notifications.length}
         </span>
       }
-      draggable={draggable}
       onRemove={onRemove}
-      className="h-full rounded-xl border-primary-200 p-3.5 md:p-4 shadow-sm [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:normal-case [&_h2]:text-ink"
+      editMode={editMode}
+      className="h-full"
     >
       {notificationsQuery.isLoading && notifications.length === 0 ? (
         <div className="flex h-[150px] items-center justify-center gap-3 rounded-xl border border-primary-200 bg-primary-100/50">
@@ -191,6 +193,6 @@ export function NotificationsWidget({
           })}
         </div>
       )}
-    </DashboardGlassCard>
+    </WidgetShell>
   )
 }

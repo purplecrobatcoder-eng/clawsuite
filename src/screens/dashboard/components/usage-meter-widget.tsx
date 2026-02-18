@@ -4,7 +4,7 @@
 import { ChartLineData02Icon } from '@hugeicons/core-free-icons'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import { DashboardGlassCard } from './dashboard-glass-card'
+import { WidgetShell } from './widget-shell'
 import { cn } from '@/lib/utils'
 
 type ProviderUsageLine = {
@@ -236,11 +236,13 @@ function formatUsd(amount: number): string {
 type UsageMeterWidgetProps = {
   draggable?: boolean
   onRemove?: () => void
+  editMode?: boolean
 }
 
 export function UsageMeterWidget({
-  draggable = false,
+  draggable: _draggable = false,
   onRemove,
+  editMode,
 }: UsageMeterWidgetProps) {
   const [view, setView] = useState<'gateway' | 'providers'>('gateway')
 
@@ -298,14 +300,11 @@ export function UsageMeterWidget({
   const progressOffset = circumference * (1 - usagePercent / 100)
 
   return (
-    <DashboardGlassCard
+    <WidgetShell
+      size="large"
       title="Usage Meter"
-      description=""
       icon={ChartLineData02Icon}
-      draggable={draggable}
-      onRemove={onRemove}
-      className="h-full rounded-xl border-primary-200 p-3.5 md:p-4 shadow-sm [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:normal-case [&_h2]:text-ink"
-      titleAccessory={
+      action={
         <div className="flex items-center gap-1">
           <div className="flex items-center gap-0.5 rounded-full border border-primary-200 bg-primary-100/70 p-0.5 text-[10px]">
             {(['gateway', 'providers'] as const).map((tab) => (
@@ -332,6 +331,9 @@ export function UsageMeterWidget({
           </span>
         </div>
       }
+      onRemove={onRemove}
+      editMode={editMode}
+      className="h-full"
     >
       {view === 'providers' ? (
         <div className="space-y-3">
@@ -641,6 +643,6 @@ export function UsageMeterWidget({
           </div>
         </div>
       )}
-    </DashboardGlassCard>
+    </WidgetShell>
   )
 }
