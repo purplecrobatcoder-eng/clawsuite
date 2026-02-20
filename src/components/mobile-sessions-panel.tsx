@@ -12,7 +12,6 @@ import type { SessionMeta } from '@/screens/chat/types'
 import { cn } from '@/lib/utils'
 import {
   useSessionGroupsStore,
-  selectAllGroups,
   type SessionGroup,
 } from '@/stores/session-groups-store'
 import { GroupSettingsDialog } from '@/screens/chat/components/sidebar/group-settings-dialog'
@@ -209,8 +208,16 @@ export function MobileSessionsPanel({
   onSelectSession,
   onNewChat,
 }: Props) {
-  const groups = useSessionGroupsStore(selectAllGroups)
+  const groupsRecord = useSessionGroupsStore((s) => s.groups)
+  const groupOrder = useSessionGroupsStore((s) => s.groupOrder)
   const sessionToGroup = useSessionGroupsStore((s) => s.sessionToGroup)
+
+  // Derive groups array from stable store values
+  const groups = useMemo(() => {
+    return groupOrder
+      .map((id) => groupsRecord[id])
+      .filter((g): g is SessionGroup => g !== undefined)
+  }, [groupOrder, groupsRecord])
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)

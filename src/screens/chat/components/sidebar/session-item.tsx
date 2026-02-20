@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/menu'
 import {
   useSessionGroupsStore,
-  selectAllGroups,
+  type SessionGroup,
 } from '@/stores/session-groups-store'
 import { GroupSettingsDialog } from './group-settings-dialog'
 
@@ -111,8 +111,16 @@ function SessionItemComponent({
   onDelete,
   groupId,
 }: SessionItemProps) {
-  const groups = useSessionGroupsStore(selectAllGroups)
+  const groupsRecord = useSessionGroupsStore((s) => s.groups)
+  const groupOrder = useSessionGroupsStore((s) => s.groupOrder)
   const assignSession = useSessionGroupsStore((s) => s.assignSession)
+
+  // Derive groups array from stable store values
+  const groups = useMemo(() => {
+    return groupOrder
+      .map((id) => groupsRecord[id])
+      .filter((g): g is SessionGroup => g !== undefined)
+  }, [groupOrder, groupsRecord])
 
   const [showMoveSubmenu, setShowMoveSubmenu] = useState(false)
   const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false)

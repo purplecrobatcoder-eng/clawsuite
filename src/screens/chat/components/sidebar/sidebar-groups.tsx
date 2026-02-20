@@ -15,7 +15,6 @@ import { GroupSettingsDialog } from './group-settings-dialog'
 import type { SessionMeta } from '../../types'
 import {
   useSessionGroupsStore,
-  selectAllGroups,
   type SessionGroup,
 } from '@/stores/session-groups-store'
 import {
@@ -208,8 +207,16 @@ export function SidebarGroups({
   onTogglePin,
   pinnedSessionKeys,
 }: SidebarGroupsProps) {
-  const groups = useSessionGroupsStore(selectAllGroups)
+  const groupsRecord = useSessionGroupsStore((s) => s.groups)
+  const groupOrder = useSessionGroupsStore((s) => s.groupOrder)
   const sessionToGroup = useSessionGroupsStore((s) => s.sessionToGroup)
+
+  // Derive groups array from stable store values
+  const groups = useMemo(() => {
+    return groupOrder
+      .map((id) => groupsRecord[id])
+      .filter((g): g is SessionGroup => g !== undefined)
+  }, [groupOrder, groupsRecord])
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
