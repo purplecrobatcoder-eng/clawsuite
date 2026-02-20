@@ -566,14 +566,14 @@ code {
 }
 
 /* Chat background image with dark overlay for readability */
-[data-chat-scroll-viewport] {
+.chat-bg-container {
   position: relative;
   background-color: #000;
 }
 
-[data-chat-scroll-viewport]::before {
+.chat-bg-container::before {
   content: '';
-  position: fixed;
+  position: absolute;
   inset: 0;
   background-image: url('/chat-bg.jpg');
   background-size: cover;
@@ -584,7 +584,7 @@ code {
   z-index: 0;
 }
 
-[data-chat-scroll-viewport] > * {
+.chat-bg-container > * {
   position: relative;
   z-index: 1;
 }

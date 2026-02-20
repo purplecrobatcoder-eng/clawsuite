@@ -1284,6 +1284,7 @@ export function ChatScreen({
 
           {gatewayNotice && <div className="sticky top-0 z-20 px-4 py-2">{gatewayNotice}</div>}
 
+          <div className="chat-bg-container flex flex-1 min-h-0 flex-col overflow-hidden">
           {hideUi ? null : (
             <ChatMessageList
               messages={finalDisplayMessages}
@@ -1333,6 +1334,7 @@ export function ChatScreen({
               focusKey={`${isNewChat ? 'new' : activeFriendlyId}:${activeCanonicalKey ?? ''}`}
             />
           ) : null}
+          </div>
         </main>
         {!compact && <AgentViewPanel />}
       </div>
