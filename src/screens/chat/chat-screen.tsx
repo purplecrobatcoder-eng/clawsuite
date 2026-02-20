@@ -1359,9 +1359,13 @@ export function ChatScreen({
             setSessionsOpen(false)
             void navigate({ to: '/chat/$sessionKey', params: { sessionKey: friendlyId } })
           }}
-          onNewChat={() => {
+          onNewChat={(groupId) => {
             setSessionsOpen(false)
-            void navigate({ to: '/chat/$sessionKey', params: { sessionKey: 'new' } })
+            void navigate({
+              to: '/chat/$sessionKey',
+              params: { sessionKey: 'new' },
+              search: groupId ? { group: groupId } : undefined,
+            })
           }}
         />
       )}
