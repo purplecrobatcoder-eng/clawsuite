@@ -99,6 +99,48 @@ function cleanUserText(raw: string): string {
   return text.trim()
 }
 
+/**
+ * Describe media content for title generation when no text is present.
+ * Returns descriptions like "[Image]" or "[File: document.pdf]"
+ */
+function describeMediaContent(msg: GatewayMessage): string {
+  const descriptions: string[] = []
+  const parts = Array.isArray(msg.content) ? msg.content : []
+
+  // Check for inline images in content array (type: 'image')
+  const inlineImageCount = parts.filter(
+    (p: unknown) =>
+      p !== null &&
+      typeof p === 'object' &&
+      (p as { type?: string }).type === 'image' &&
+      (p as { source?: unknown }).source,
+  ).length
+  if (inlineImageCount > 0) {
+    descriptions.push(
+      inlineImageCount === 1 ? '[Image]' : `[${inlineImageCount} Images]`,
+    )
+  }
+
+  // Check attachments array
+  const attachments = Array.isArray(msg.attachments) ? msg.attachments : []
+  for (const attachment of attachments) {
+    const name = attachment.name?.trim()
+    const contentType = attachment.contentType ?? ''
+    if (contentType.startsWith('image/')) {
+      // Skip if we already counted inline images (avoid double-counting)
+      if (inlineImageCount === 0) {
+        descriptions.push(name ? `[Image: ${name}]` : '[Image]')
+      }
+    } else if (name) {
+      descriptions.push(`[File: ${name}]`)
+    } else {
+      descriptions.push('[Attachment]')
+    }
+  }
+
+  return descriptions.join(' ')
+}
+
 export function textFromMessage(msg: GatewayMessage): string {
   const parts = Array.isArray(msg.content) ? msg.content : []
   const raw = parts
@@ -108,7 +150,12 @@ export function textFromMessage(msg: GatewayMessage): string {
 
   // Clean user messages (strip system metadata)
   if (msg.role === 'user') {
-    return stripChannelPrefix(cleanUserText(raw))
+    const cleaned = stripChannelPrefix(cleanUserText(raw))
+    // If no text but has media, include media description for context
+    if (!cleaned) {
+      return describeMediaContent(msg)
+    }
+    return cleaned
   }
 
   // Clean assistant messages (strip reply tags and channel prefixes)
