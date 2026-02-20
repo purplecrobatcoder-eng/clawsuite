@@ -49,6 +49,7 @@ import { Route as ApiSkillsRouteImport } from './routes/api/skills'
 import { Route as ApiSessionsRouteImport } from './routes/api/sessions'
 import { Route as ApiSessionTitleRouteImport } from './routes/api/session-title'
 import { Route as ApiSessionStatusRouteImport } from './routes/api/session-status'
+import { Route as ApiSessionGroupsRouteImport } from './routes/api/session-groups'
 import { Route as ApiSendStreamRouteImport } from './routes/api/send-stream'
 import { Route as ApiSendRouteImport } from './routes/api/send'
 import { Route as ApiProviderUsageRouteImport } from './routes/api/provider-usage'
@@ -299,6 +300,11 @@ const ApiSessionTitleRoute = ApiSessionTitleRouteImport.update({
 const ApiSessionStatusRoute = ApiSessionStatusRouteImport.update({
   id: '/api/session-status',
   path: '/api/session-status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSessionGroupsRoute = ApiSessionGroupsRouteImport.update({
+  id: '/api/session-groups',
+  path: '/api/session-groups',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSendStreamRoute = ApiSendStreamRouteImport.update({
@@ -611,6 +617,7 @@ export interface FileRoutesByFullPath {
   '/api/provider-usage': typeof ApiProviderUsageRoute
   '/api/send': typeof ApiSendRoute
   '/api/send-stream': typeof ApiSendStreamRoute
+  '/api/session-groups': typeof ApiSessionGroupsRoute
   '/api/session-status': typeof ApiSessionStatusRoute
   '/api/session-title': typeof ApiSessionTitleRoute
   '/api/sessions': typeof ApiSessionsRouteWithChildren
@@ -703,6 +710,7 @@ export interface FileRoutesByTo {
   '/api/provider-usage': typeof ApiProviderUsageRoute
   '/api/send': typeof ApiSendRoute
   '/api/send-stream': typeof ApiSendStreamRoute
+  '/api/session-groups': typeof ApiSessionGroupsRoute
   '/api/session-status': typeof ApiSessionStatusRoute
   '/api/session-title': typeof ApiSessionTitleRoute
   '/api/sessions': typeof ApiSessionsRouteWithChildren
@@ -797,6 +805,7 @@ export interface FileRoutesById {
   '/api/provider-usage': typeof ApiProviderUsageRoute
   '/api/send': typeof ApiSendRoute
   '/api/send-stream': typeof ApiSendStreamRoute
+  '/api/session-groups': typeof ApiSessionGroupsRoute
   '/api/session-status': typeof ApiSessionStatusRoute
   '/api/session-title': typeof ApiSessionTitleRoute
   '/api/sessions': typeof ApiSessionsRouteWithChildren
@@ -892,6 +901,7 @@ export interface FileRouteTypes {
     | '/api/provider-usage'
     | '/api/send'
     | '/api/send-stream'
+    | '/api/session-groups'
     | '/api/session-status'
     | '/api/session-title'
     | '/api/sessions'
@@ -984,6 +994,7 @@ export interface FileRouteTypes {
     | '/api/provider-usage'
     | '/api/send'
     | '/api/send-stream'
+    | '/api/session-groups'
     | '/api/session-status'
     | '/api/session-title'
     | '/api/sessions'
@@ -1077,6 +1088,7 @@ export interface FileRouteTypes {
     | '/api/provider-usage'
     | '/api/send'
     | '/api/send-stream'
+    | '/api/session-groups'
     | '/api/session-status'
     | '/api/session-title'
     | '/api/sessions'
@@ -1171,6 +1183,7 @@ export interface RootRouteChildren {
   ApiProviderUsageRoute: typeof ApiProviderUsageRoute
   ApiSendRoute: typeof ApiSendRoute
   ApiSendStreamRoute: typeof ApiSendStreamRoute
+  ApiSessionGroupsRoute: typeof ApiSessionGroupsRoute
   ApiSessionStatusRoute: typeof ApiSessionStatusRoute
   ApiSessionTitleRoute: typeof ApiSessionTitleRoute
   ApiSessionsRoute: typeof ApiSessionsRouteWithChildren
@@ -1478,6 +1491,13 @@ declare module '@tanstack/react-router' {
       path: '/api/session-status'
       fullPath: '/api/session-status'
       preLoaderRoute: typeof ApiSessionStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/session-groups': {
+      id: '/api/session-groups'
+      path: '/api/session-groups'
+      fullPath: '/api/session-groups'
+      preLoaderRoute: typeof ApiSessionGroupsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/send-stream': {
@@ -1970,6 +1990,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiProviderUsageRoute: ApiProviderUsageRoute,
   ApiSendRoute: ApiSendRoute,
   ApiSendStreamRoute: ApiSendStreamRoute,
+  ApiSessionGroupsRoute: ApiSessionGroupsRoute,
   ApiSessionStatusRoute: ApiSessionStatusRoute,
   ApiSessionTitleRoute: ApiSessionTitleRoute,
   ApiSessionsRoute: ApiSessionsRouteWithChildren,
