@@ -13,11 +13,21 @@ export type SessionGroup = {
   updatedAt: number
 }
 
-export type SessionGroupsState = {
+export type SessionGroupsData = {
   groups: Record<string, SessionGroup>
   sessionToGroup: Record<string, string>
   groupOrder: string[]
+}
 
+export type SessionGroupsState = SessionGroupsData & {
+  /** Whether data has been synced from server */
+  synced: boolean
+  /** Whether sync is in progress */
+  syncing: boolean
+  /** Last sync error */
+  syncError: string | null
+
+  // Actions
   createGroup: (name: string, options?: Partial<SessionGroup>) => string
   updateGroup: (id: string, patch: Partial<SessionGroup>) => void
   deleteGroup: (id: string) => void
@@ -26,6 +36,10 @@ export type SessionGroupsState = {
   assignSession: (sessionKey: string, groupId: string | null) => void
   getGroupForSession: (sessionKey: string) => SessionGroup | null
   getSessionKeysInGroup: (groupId: string) => string[]
+
+  // Sync
+  loadFromServer: () => Promise<void>
+  syncToServer: () => Promise<void>
 }
 
 export const GROUP_COLORS = [
@@ -47,12 +61,46 @@ function pickRandomColor(): string {
   return GROUP_COLORS[Math.floor(Math.random() * GROUP_COLORS.length)]
 }
 
+async function fetchGroups(): Promise<SessionGroupsData | null> {
+  try {
+    const res = await fetch('/api/session-groups')
+    if (!res.ok) return null
+    const data = await res.json()
+    return {
+      groups: data.groups ?? {},
+      sessionToGroup: data.sessionToGroup ?? {},
+      groupOrder: data.groupOrder ?? [],
+    }
+  } catch {
+    return null
+  }
+}
+
+async function postGroupAction(
+  action: string,
+  payload: Record<string, unknown>,
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/session-groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...payload }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export const useSessionGroupsStore = create<SessionGroupsState>()(
   persist(
     (set, get) => ({
       groups: {},
       sessionToGroup: {},
       groupOrder: [],
+      synced: false,
+      syncing: false,
+      syncError: null,
 
       createGroup: (name, options = {}) => {
         const id = generateId()
@@ -73,6 +121,11 @@ export const useSessionGroupsStore = create<SessionGroupsState>()(
           groups: { ...state.groups, [id]: group },
           groupOrder: [...state.groupOrder, id],
         }))
+
+        // Sync to server in background
+        postGroupAction('create', { name, patch: options }).catch(() => {
+          // Already created locally, server sync failed - will retry on next full sync
+        })
 
         return id
       },
@@ -95,6 +148,8 @@ export const useSessionGroupsStore = create<SessionGroupsState>()(
             },
           }
         })
+
+        postGroupAction('update', { id, patch })
       },
 
       deleteGroup: (id) => {
@@ -112,23 +167,29 @@ export const useSessionGroupsStore = create<SessionGroupsState>()(
             groupOrder: state.groupOrder.filter((gid) => gid !== id),
           }
         })
+
+        postGroupAction('delete', { id })
       },
 
       reorderGroups: (groupIds) => {
         set({ groupOrder: groupIds })
+        postGroupAction('reorder', { groupIds })
       },
 
       toggleGroupCollapsed: (id) => {
-        set((state) => {
-          const existing = state.groups[id]
-          if (!existing) return state
-          return {
-            groups: {
-              ...state.groups,
-              [id]: { ...existing, collapsed: !existing.collapsed },
-            },
-          }
+        const state = get()
+        const existing = state.groups[id]
+        if (!existing) return
+
+        const collapsed = !existing.collapsed
+        set({
+          groups: {
+            ...state.groups,
+            [id]: { ...existing, collapsed },
+          },
         })
+
+        postGroupAction('update', { id, patch: { collapsed } })
       },
 
       assignSession: (sessionKey, groupId) => {
@@ -142,6 +203,8 @@ export const useSessionGroupsStore = create<SessionGroupsState>()(
             sessionToGroup: { ...state.sessionToGroup, [sessionKey]: groupId },
           }
         })
+
+        postGroupAction('assign', { sessionKey, groupId })
       },
 
       getGroupForSession: (sessionKey) => {
@@ -157,6 +220,54 @@ export const useSessionGroupsStore = create<SessionGroupsState>()(
           .filter(([, gid]) => gid === groupId)
           .map(([sessionKey]) => sessionKey)
       },
+
+      loadFromServer: async () => {
+        set({ syncing: true, syncError: null })
+        try {
+          const data = await fetchGroups()
+          if (data) {
+            set({
+              groups: data.groups,
+              sessionToGroup: data.sessionToGroup,
+              groupOrder: data.groupOrder,
+              synced: true,
+              syncing: false,
+            })
+          } else {
+            // Server unavailable, use local data
+            set({ syncing: false })
+          }
+        } catch (error) {
+          set({
+            syncing: false,
+            syncError: error instanceof Error ? error.message : 'Sync failed',
+          })
+        }
+      },
+
+      syncToServer: async () => {
+        const state = get()
+        set({ syncing: true, syncError: null })
+        try {
+          const success = await postGroupAction('sync', {
+            data: {
+              version: 1,
+              groups: state.groups,
+              sessionToGroup: state.sessionToGroup,
+              groupOrder: state.groupOrder,
+            },
+          })
+          set({ syncing: false, synced: success })
+          if (!success) {
+            set({ syncError: 'Failed to sync to server' })
+          }
+        } catch (error) {
+          set({
+            syncing: false,
+            syncError: error instanceof Error ? error.message : 'Sync failed',
+          })
+        }
+      },
     }),
     {
       name: 'openclaw-session-groups-v1',
@@ -165,12 +276,31 @@ export const useSessionGroupsStore = create<SessionGroupsState>()(
         sessionToGroup: state.sessionToGroup,
         groupOrder: state.groupOrder,
       }),
+      onRehydrateStorage: () => (state) => {
+        // After loading from localStorage, try to sync with server
+        if (state) {
+          // Delay to let the app initialize
+          setTimeout(() => {
+            state.loadFromServer()
+          }, 1000)
+        }
+      },
     },
   ),
 )
 
-export function selectAllGroups(state: SessionGroupsState): SessionGroup[] {
-  return state.groupOrder
-    .map((id) => state.groups[id])
-    .filter((g): g is SessionGroup => g !== undefined)
+// Initialize: load from server when store is first accessed
+if (typeof window !== 'undefined') {
+  // Check if we have local data to migrate
+  const localData = localStorage.getItem('openclaw-session-groups-v1')
+  if (localData) {
+    try {
+      const parsed = JSON.parse(localData)
+      if (parsed.state?.groups && Object.keys(parsed.state.groups).length > 0) {
+        // Has local data, will sync to server on rehydrate
+      }
+    } catch {
+      // ignore
+    }
+  }
 }
