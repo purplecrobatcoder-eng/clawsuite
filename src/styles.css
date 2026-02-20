@@ -564,3 +564,27 @@ code {
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* Chat background image with dark overlay for readability */
+[data-chat-scroll-viewport] {
+  position: relative;
+  background-color: #000;
+}
+
+[data-chat-scroll-viewport]::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url('/chat-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.3;
+  pointer-events: none;
+  z-index: 0;
+}
+
+[data-chat-scroll-viewport] > * {
+  position: relative;
+  z-index: 1;
+}
