@@ -314,5 +314,13 @@ function mergeOptimisticHistoryMessages(
     }
   }
 
+  // Sort by timestamp to ensure correct message order
+  // (optimistic messages might need to be interleaved with server messages)
+  merged.sort((a, b) => {
+    const tsA = getMessageTimestamp(a)
+    const tsB = getMessageTimestamp(b)
+    return tsA - tsB
+  })
+
   return merged
 }

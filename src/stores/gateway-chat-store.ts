@@ -335,10 +335,44 @@ export const useGatewayChatStore = create<GatewayChatState>((set, get) => ({
       return historyMessages
     }
 
-    // Append new realtime messages to history
-    return [...historyMessages, ...newRealtimeMessages]
+    // Append new realtime messages to history and sort by timestamp
+    const merged = [...historyMessages, ...newRealtimeMessages]
+    
+    // Sort by timestamp to ensure correct message order
+    // (SSE events can arrive out of order, especially in new sessions)
+    merged.sort((a, b) => {
+      const tsA = getMessageTs(a)
+      const tsB = getMessageTs(b)
+      return tsA - tsB
+    })
+    
+    return merged
   },
 }))
+
+/** Extract timestamp from message for sorting */
+function getMessageTs(message: GatewayMessage): number {
+  const candidates = [
+    (message as any).createdAt,
+    (message as any).created_at,
+    (message as any).timestamp,
+    (message as any).__createdAt,
+    (message as any).time,
+    (message as any).ts,
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      // Normalize to milliseconds
+      return candidate < 1_000_000_000_000 ? candidate * 1000 : candidate
+    }
+    if (typeof candidate === 'string') {
+      const parsed = Date.parse(candidate)
+      if (!Number.isNaN(parsed)) return parsed
+    }
+  }
+  // Fallback: use current time (preserves insertion order for messages without timestamps)
+  return Date.now()
+}
 
 function extractTextFromContent(
   content: Array<MessageContent> | undefined,
