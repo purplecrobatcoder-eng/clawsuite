@@ -123,7 +123,7 @@ export function GroupSettingsDialog({
 
   return (
     <DialogRoot open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md mx-4 md:mx-auto max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between mb-4">
           <div>
             <DialogTitle className="text-lg font-semibold">
@@ -156,7 +156,7 @@ export function GroupSettingsDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My Project"
-              className="w-full rounded-lg border border-primary-200 bg-surface px-3 py-2 text-sm placeholder:text-primary-400 focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
+              className="w-full rounded-lg border border-primary-200 bg-surface px-3 py-3 md:py-2 text-base md:text-sm placeholder:text-primary-400 focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500"
               autoFocus
             />
           </div>
@@ -170,8 +170,8 @@ export function GroupSettingsDialog({
                   type="button"
                   onClick={() => setColor(c)}
                   className={cn(
-                    'size-7 rounded-full transition-all',
-                    color === c ? 'ring-2 ring-offset-2 ring-primary-400 scale-110' : 'hover:scale-105',
+                    'size-9 md:size-7 rounded-full transition-all touch-manipulation',
+                    color === c ? 'ring-2 ring-offset-2 ring-primary-400 scale-110' : 'hover:scale-105 active:scale-95',
                   )}
                   style={{ backgroundColor: c }}
                   aria-label={`Select color ${c}`}

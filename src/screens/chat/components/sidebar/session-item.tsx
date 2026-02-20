@@ -3,7 +3,7 @@
 import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
-  ArrowRight01Icon,
+  ArrowDown01Icon,
   Delete01Icon,
   FolderOpenIcon,
   MoreHorizontalIcon,
@@ -206,8 +206,8 @@ function SessionItemComponent({
               event.stopPropagation()
             }}
             className={cn(
-              'ml-2 inline-flex size-7 items-center justify-center rounded-md text-primary-700',
-              'opacity-0 transition-opacity group-hover:opacity-100 hover:bg-primary-200',
+              'ml-2 inline-flex size-8 md:size-7 items-center justify-center rounded-md text-primary-700',
+              'md:opacity-0 transition-opacity md:group-hover:opacity-100 hover:bg-primary-200',
               'aria-expanded:opacity-100 aria-expanded:bg-primary-200',
             )}
             aria-label="Session options"
@@ -218,57 +218,59 @@ function SessionItemComponent({
               strokeWidth={1.5}
             />
           </MenuTrigger>
-          <MenuContent side="bottom" align="end" className="min-w-[180px]">
+          <MenuContent side="bottom" align="end" className="min-w-[200px]">
             <MenuItem
               onClick={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
                 onTogglePin(session)
               }}
-              className="gap-2"
+              className="gap-2 py-2.5 md:py-2"
             >
               <HugeiconsIcon icon={PinIcon} size={20} strokeWidth={1.5} />
               {isPinned ? 'Unpin session' : 'Pin session'}
             </MenuItem>
 
-            <div className="relative">
+            {/* Move to group - inline expandable for mobile-friendly UX */}
+            <div>
               <MenuItem
                 onClick={(event) => {
                   event.preventDefault()
                   event.stopPropagation()
                   setShowMoveSubmenu(!showMoveSubmenu)
                 }}
-                className="gap-2 justify-between"
+                className="gap-2 justify-between py-2.5 md:py-2"
               >
                 <span className="flex items-center gap-2">
                   <HugeiconsIcon icon={FolderOpenIcon} size={20} strokeWidth={1.5} />
                   Move to group
                 </span>
                 <HugeiconsIcon
-                  icon={ArrowRight01Icon}
+                  icon={ArrowDown01Icon}
                   size={14}
                   strokeWidth={1.5}
-                  className="text-primary-400"
+                  className={cn(
+                    'text-primary-400 transition-transform',
+                    showMoveSubmenu && 'rotate-180',
+                  )}
                 />
               </MenuItem>
 
+              {/* Inline submenu - expands below instead of flying out */}
               {showMoveSubmenu && (
-                <div className="absolute left-full top-0 ml-1 min-w-[160px] rounded-lg border border-primary-200 bg-surface shadow-lg py-1 z-50">
+                <div className="border-t border-primary-100 bg-primary-50/50 py-1">
                   {groupId && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          handleMoveToGroup(null)
-                        }}
-                        className="w-full px-3 py-2 text-left text-sm text-primary-700 hover:bg-primary-100 transition-colors"
-                      >
-                        Remove from group
-                      </button>
-                      <div className="my-1 border-t border-primary-100" />
-                    </>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        handleMoveToGroup(null)
+                      }}
+                      className="w-full px-4 py-2.5 md:py-2 text-left text-sm text-primary-700 hover:bg-primary-100 transition-colors pl-9"
+                    >
+                      Remove from group
+                    </button>
                   )}
 
                   {otherGroups.map((group) => (
@@ -280,7 +282,7 @@ function SessionItemComponent({
                         event.stopPropagation()
                         handleMoveToGroup(group.id)
                       }}
-                      className="w-full px-3 py-2 text-left text-sm text-primary-700 hover:bg-primary-100 transition-colors flex items-center gap-2"
+                      className="w-full px-4 py-2.5 md:py-2 text-left text-sm text-primary-700 hover:bg-primary-100 transition-colors flex items-center gap-2 pl-9"
                     >
                       <span
                         className="size-2.5 rounded-full shrink-0"
@@ -290,10 +292,6 @@ function SessionItemComponent({
                     </button>
                   ))}
 
-                  {otherGroups.length > 0 && (
-                    <div className="my-1 border-t border-primary-100" />
-                  )}
-
                   <button
                     type="button"
                     onClick={(event) => {
@@ -302,7 +300,7 @@ function SessionItemComponent({
                       setShowMoveSubmenu(false)
                       setCreateGroupDialogOpen(true)
                     }}
-                    className="w-full px-3 py-2 text-left text-sm text-accent-600 hover:bg-accent-50 transition-colors"
+                    className="w-full px-4 py-2.5 md:py-2 text-left text-sm text-accent-600 hover:bg-accent-50 transition-colors pl-9"
                   >
                     + New group...
                   </button>
@@ -316,7 +314,7 @@ function SessionItemComponent({
                 event.stopPropagation()
                 onRename(session)
               }}
-              className="gap-2"
+              className="gap-2 py-2.5 md:py-2"
             >
               <HugeiconsIcon icon={Pen01Icon} size={20} strokeWidth={1.5} />
               Rename
@@ -327,7 +325,7 @@ function SessionItemComponent({
                 event.stopPropagation()
                 onDelete(session)
               }}
-              className="text-red-700 gap-2 hover:bg-red-50/80 data-highlighted:bg-red-50/80"
+              className="text-red-700 gap-2 hover:bg-red-50/80 data-highlighted:bg-red-50/80 py-2.5 md:py-2"
             >
               <HugeiconsIcon icon={Delete01Icon} size={20} strokeWidth={1.5} />
               Delete

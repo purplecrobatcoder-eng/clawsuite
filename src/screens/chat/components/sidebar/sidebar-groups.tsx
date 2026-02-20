@@ -74,7 +74,7 @@ function GroupItemComponent({
   return (
     <div className="mb-1">
       <div
-        className="group flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-primary-100 transition-colors cursor-pointer"
+        className="group flex items-center gap-1.5 px-2 py-2.5 md:py-1.5 rounded-lg hover:bg-primary-100 active:bg-primary-150 transition-colors cursor-pointer touch-manipulation"
         role="button"
         tabIndex={0}
         onClick={handleToggle}
@@ -85,23 +85,24 @@ function GroupItemComponent({
           }
         }}
       >
-        <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
+        <span className="size-3 md:size-2.5 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
         <HugeiconsIcon
           icon={ArrowDown01Icon}
-          size={12}
+          size={14}
           strokeWidth={2}
           className={cn(
-            'text-primary-400 transition-transform duration-150 shrink-0',
+            'text-primary-400 transition-transform duration-150 shrink-0 md:size-3',
             isCollapsed ? '-rotate-90' : 'rotate-0',
           )}
         />
         <span className="flex-1 text-sm font-medium text-primary-800 truncate select-none">
           {group.name}
         </span>
-        <span className="text-[10px] text-primary-400 tabular-nums">{sessions.length}</span>
+        <span className="text-[11px] md:text-[10px] text-primary-400 tabular-nums">{sessions.length}</span>
 
+        {/* Actions - always visible on mobile, hover on desktop */}
         <div
-          className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="flex items-center gap-1 md:gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
           <TooltipProvider>
@@ -116,7 +117,7 @@ function GroupItemComponent({
                       e.stopPropagation()
                       onSelect?.()
                     }}
-                    className="p-1 rounded hover:bg-primary-200 text-primary-500 hover:text-primary-700 transition-colors"
+                    className="p-2 md:p-1 rounded hover:bg-primary-200 active:bg-primary-300 text-primary-500 hover:text-primary-700 transition-colors touch-manipulation"
                     aria-label={`New session in ${group.name}`}
                   >
                     <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.5} />
@@ -137,10 +138,10 @@ function GroupItemComponent({
                       e.stopPropagation()
                       onEditGroup(group.id)
                     }}
-                    className="p-1 rounded hover:bg-primary-200 text-primary-500 hover:text-primary-700 transition-colors"
+                    className="p-2 md:p-1 rounded hover:bg-primary-200 active:bg-primary-300 text-primary-500 hover:text-primary-700 transition-colors touch-manipulation"
                     aria-label={`Settings for ${group.name}`}
                   >
-                    <HugeiconsIcon icon={Settings01Icon} size={14} strokeWidth={1.5} />
+                    <HugeiconsIcon icon={Settings01Icon} size={16} strokeWidth={1.5} className="md:size-3.5" />
                   </button>
                 }
               />
