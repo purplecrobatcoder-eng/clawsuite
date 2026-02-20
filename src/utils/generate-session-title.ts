@@ -260,6 +260,23 @@ const CATEGORY_SUBJECT_FALLBACK: Record<SessionCategory, string> = {
 
 export type SessionTitleSnippet = Array<{ role: string; text: string }>
 
+/**
+ * Strip envelope prefix like "[Fri 2026-02-20 11:23 GMT+8] ..." from messages.
+ * These are injected by the gateway for agent date/time awareness but shouldn't
+ * appear in session titles.
+ */
+const ENVELOPE_PREFIX = /^\[([^\]]+)\]\s*/
+const ENVELOPE_TIMESTAMP_PATTERN = /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/
+
+function stripEnvelope(text: string): string {
+  const match = text.match(ENVELOPE_PREFIX)
+  if (!match) return text
+  const header = match[1] ?? ''
+  // Only strip if it looks like a timestamp envelope
+  if (!ENVELOPE_TIMESTAMP_PATTERN.test(header)) return text
+  return text.slice(match[0].length)
+}
+
 function stripNoisePrefixes(text: string): string {
   let stripped = text.trim()
   let previous = ''
@@ -271,7 +288,9 @@ function stripNoisePrefixes(text: string): string {
 }
 
 function cleanText(raw: string): string {
-  let text = raw
+  // Strip envelope prefix first (e.g. "[Fri 2026-02-20 11:23 GMT+8] ...")
+  let text = stripEnvelope(raw)
+  text = text
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`[^`]*`/g, ' ')
     .replace(/\[(.*?)\]\((.*?)\)/g, '$1')
