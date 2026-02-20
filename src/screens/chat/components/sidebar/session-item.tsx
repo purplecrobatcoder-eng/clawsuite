@@ -3,12 +3,14 @@
 import { Link } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  ArrowRight01Icon,
   Delete01Icon,
+  FolderOpenIcon,
   MoreHorizontalIcon,
   Pen01Icon,
   PinIcon,
 } from '@hugeicons/core-free-icons'
-import { memo, useMemo } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { getMessageTimestamp } from '../../utils'
 import type { SessionMeta } from '../../types'
 import { cn } from '@/lib/utils'
@@ -18,6 +20,11 @@ import {
   MenuRoot,
   MenuTrigger,
 } from '@/components/ui/menu'
+import {
+  useSessionGroupsStore,
+  selectAllGroups,
+} from '@/stores/session-groups-store'
+import { GroupSettingsDialog } from './group-settings-dialog'
 
 type SessionItemProps = {
   session: SessionMeta
@@ -27,6 +34,7 @@ type SessionItemProps = {
   onTogglePin: (session: SessionMeta) => void
   onRename: (session: SessionMeta) => void
   onDelete: (session: SessionMeta) => void
+  groupId?: string | null
 }
 
 const dayFormatter = new Intl.DateTimeFormat(undefined, {
@@ -101,7 +109,14 @@ function SessionItemComponent({
   onTogglePin,
   onRename,
   onDelete,
+  groupId,
 }: SessionItemProps) {
+  const groups = useSessionGroupsStore(selectAllGroups)
+  const assignSession = useSessionGroupsStore((s) => s.assignSession)
+
+  const [showMoveSubmenu, setShowMoveSubmenu] = useState(false)
+  const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false)
+
   const isGenerating = session.titleStatus === 'generating'
   const isError = session.titleStatus === 'error'
   const baseTitle = getSessionDisplayTitle(session, isGenerating)
@@ -123,103 +138,217 @@ function SessionItemComponent({
     return parts.join(' • ')
   }, [isError, session.friendlyId, session.titleError, updatedAt])
 
+  const handleMoveToGroup = useCallback(
+    (targetGroupId: string | null) => {
+      assignSession(session.key, targetGroupId)
+      setShowMoveSubmenu(false)
+    },
+    [assignSession, session.key],
+  )
+
+  const handleCreateGroupAndAssign = useCallback(
+    (newGroupId: string) => {
+      assignSession(session.key, newGroupId)
+      setCreateGroupDialogOpen(false)
+    },
+    [assignSession, session.key],
+  )
+
+  const otherGroups = useMemo(
+    () => groups.filter((g) => g.id !== groupId),
+    [groups, groupId],
+  )
+
   return (
-    <Link
-      to="/chat/$sessionKey"
-      params={{ sessionKey: session.friendlyId }}
-      onClick={onSelect}
-      className={cn(
-        'group inline-flex items-center justify-between',
-        'w-full text-left pl-1.5 pr-0.5 h-14 rounded-lg transition-colors duration-0',
-        'select-none',
-        active
-          ? 'bg-primary-200 text-primary-950'
-          : 'bg-transparent text-primary-950 [&:hover:not(:has(button:hover))]:bg-primary-200',
-      )}
-    >
-      <div className="flex-1 min-w-0 py-1.5">
-        <div
-          className={cn(
-            'truncate text-sm font-[500]',
-            isGenerating ? 'text-primary-700' : '',
-          )}
-        >
-          <span className={cn(isGenerating ? 'animate-pulse' : undefined)}>
-            {baseTitle}
-          </span>
+    <>
+      <Link
+        to="/chat/$sessionKey"
+        params={{ sessionKey: session.friendlyId }}
+        onClick={onSelect}
+        className={cn(
+          'group inline-flex items-center justify-between',
+          'w-full text-left pl-1.5 pr-0.5 h-14 rounded-lg transition-colors duration-0',
+          'select-none',
+          active
+            ? 'bg-primary-200 text-primary-950'
+            : 'bg-transparent text-primary-950 [&:hover:not(:has(button:hover))]:bg-primary-200',
+        )}
+      >
+        <div className="flex-1 min-w-0 py-1.5">
+          <div
+            className={cn(
+              'truncate text-sm font-[500]',
+              isGenerating ? 'text-primary-700' : '',
+            )}
+          >
+            <span className={cn(isGenerating ? 'animate-pulse' : undefined)}>
+              {baseTitle}
+            </span>
+          </div>
+          <div
+            className={cn(
+              'mt-0.5 text-[11px] text-primary-600 truncate',
+              isError ? 'text-red-600' : undefined,
+            )}
+          >
+            {subtitle}
+          </div>
         </div>
-        <div
-          className={cn(
-            'mt-0.5 text-[11px] text-primary-600 truncate',
-            isError ? 'text-red-600' : undefined,
-          )}
-        >
-          {subtitle}
-        </div>
-      </div>
-      <MenuRoot>
-        <MenuTrigger
-          type="button"
-          onClick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
+        <MenuRoot
+          onOpenChange={(open) => {
+            if (!open) setShowMoveSubmenu(false)
           }}
-          className={cn(
-            'ml-2 inline-flex size-7 items-center justify-center rounded-md text-primary-700',
-            'opacity-0 transition-opacity group-hover:opacity-100 hover:bg-primary-200',
-            'aria-expanded:opacity-100 aria-expanded:bg-primary-200',
-          )}
-          aria-label="Session options"
         >
-          <HugeiconsIcon
-            icon={MoreHorizontalIcon}
-            size={20}
-            strokeWidth={1.5}
-          />
-        </MenuTrigger>
-        <MenuContent side="bottom" align="end">
-          <MenuItem
+          <MenuTrigger
+            type="button"
             onClick={(event) => {
               event.preventDefault()
               event.stopPropagation()
-              onTogglePin(session)
             }}
-            className="gap-2"
+            className={cn(
+              'ml-2 inline-flex size-7 items-center justify-center rounded-md text-primary-700',
+              'opacity-0 transition-opacity group-hover:opacity-100 hover:bg-primary-200',
+              'aria-expanded:opacity-100 aria-expanded:bg-primary-200',
+            )}
+            aria-label="Session options"
           >
-            <HugeiconsIcon icon={PinIcon} size={20} strokeWidth={1.5} />{' '}
-            {isPinned ? 'Unpin session' : 'Pin session'}
-          </MenuItem>
-          <MenuItem
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              onRename(session)
-            }}
-            className="gap-2"
-          >
-            <HugeiconsIcon icon={Pen01Icon} size={20} strokeWidth={1.5} />{' '}
-            Rename
-          </MenuItem>
-          <MenuItem
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              onDelete(session)
-            }}
-            className="text-red-700 gap-2 hover:bg-red-50/80 data-highlighted:bg-red-50/80"
-          >
-            <HugeiconsIcon icon={Delete01Icon} size={20} strokeWidth={1.5} />{' '}
-            Delete
-          </MenuItem>
-        </MenuContent>
-      </MenuRoot>
-    </Link>
+            <HugeiconsIcon
+              icon={MoreHorizontalIcon}
+              size={20}
+              strokeWidth={1.5}
+            />
+          </MenuTrigger>
+          <MenuContent side="bottom" align="end" className="min-w-[180px]">
+            <MenuItem
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onTogglePin(session)
+              }}
+              className="gap-2"
+            >
+              <HugeiconsIcon icon={PinIcon} size={20} strokeWidth={1.5} />
+              {isPinned ? 'Unpin session' : 'Pin session'}
+            </MenuItem>
+
+            <div className="relative">
+              <MenuItem
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setShowMoveSubmenu(!showMoveSubmenu)
+                }}
+                className="gap-2 justify-between"
+              >
+                <span className="flex items-center gap-2">
+                  <HugeiconsIcon icon={FolderOpenIcon} size={20} strokeWidth={1.5} />
+                  Move to group
+                </span>
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  size={14}
+                  strokeWidth={1.5}
+                  className="text-primary-400"
+                />
+              </MenuItem>
+
+              {showMoveSubmenu && (
+                <div className="absolute left-full top-0 ml-1 min-w-[160px] rounded-lg border border-primary-200 bg-surface shadow-lg py-1 z-50">
+                  {groupId && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          handleMoveToGroup(null)
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-primary-700 hover:bg-primary-100 transition-colors"
+                      >
+                        Remove from group
+                      </button>
+                      <div className="my-1 border-t border-primary-100" />
+                    </>
+                  )}
+
+                  {otherGroups.map((group) => (
+                    <button
+                      key={group.id}
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        handleMoveToGroup(group.id)
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-primary-700 hover:bg-primary-100 transition-colors flex items-center gap-2"
+                    >
+                      <span
+                        className="size-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: group.color }}
+                      />
+                      <span className="truncate">{group.name}</span>
+                    </button>
+                  ))}
+
+                  {otherGroups.length > 0 && (
+                    <div className="my-1 border-t border-primary-100" />
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setShowMoveSubmenu(false)
+                      setCreateGroupDialogOpen(true)
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-accent-600 hover:bg-accent-50 transition-colors"
+                  >
+                    + New group...
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <MenuItem
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onRename(session)
+              }}
+              className="gap-2"
+            >
+              <HugeiconsIcon icon={Pen01Icon} size={20} strokeWidth={1.5} />
+              Rename
+            </MenuItem>
+            <MenuItem
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onDelete(session)
+              }}
+              className="text-red-700 gap-2 hover:bg-red-50/80 data-highlighted:bg-red-50/80"
+            >
+              <HugeiconsIcon icon={Delete01Icon} size={20} strokeWidth={1.5} />
+              Delete
+            </MenuItem>
+          </MenuContent>
+        </MenuRoot>
+      </Link>
+
+      <GroupSettingsDialog
+        open={createGroupDialogOpen}
+        onOpenChange={setCreateGroupDialogOpen}
+        onSaved={handleCreateGroupAndAssign}
+      />
+    </>
   )
 }
 
 function areSessionItemsEqual(prev: SessionItemProps, next: SessionItemProps) {
   if (prev.active !== next.active) return false
   if (prev.isPinned !== next.isPinned) return false
+  if (prev.groupId !== next.groupId) return false
   if (prev.onSelect !== next.onSelect) return false
   if (prev.onTogglePin !== next.onTogglePin) return false
   if (prev.onRename !== next.onRename) return false

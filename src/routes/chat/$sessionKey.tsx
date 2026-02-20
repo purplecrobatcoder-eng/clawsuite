@@ -1,12 +1,18 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { z } from 'zod'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { ChatScreen } from '../../screens/chat/chat-screen'
 import { moveHistoryMessages } from '../../screens/chat/chat-queries'
 
+const chatSearchSchema = z.object({
+  group: z.string().optional(),
+})
+
 export const Route = createFileRoute('/chat/$sessionKey')({
   component: ChatRoute,
+  validateSearch: chatSearchSchema,
   // Disable SSR to prevent hydration mismatches from async data
   ssr: false,
   errorComponent: function ChatError({ error, reset }) {
@@ -56,9 +62,11 @@ function ChatRoute() {
     sessionKey: string
   } | null>(null)
   const params = Route.useParams()
+  const search = Route.useSearch()
   const activeFriendlyId =
     typeof params.sessionKey === 'string' ? params.sessionKey : 'main'
   const isNewChat = activeFriendlyId === 'new'
+  const groupId = isNewChat ? search.group : undefined
   const forcedSessionKey =
     forcedSession?.friendlyId === activeFriendlyId
       ? forcedSession.sessionKey
@@ -111,6 +119,7 @@ function ChatRoute() {
         isNewChat={isNewChat}
         forcedSessionKey={forcedSessionKey}
         onSessionResolved={isNewChat ? handleSessionResolved : undefined}
+        groupId={groupId}
       />
     </ErrorBoundary>
   )

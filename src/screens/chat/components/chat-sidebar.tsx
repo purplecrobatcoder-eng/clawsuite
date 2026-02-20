@@ -36,7 +36,9 @@ import { ProvidersDialog } from './providers-dialog'
 import { SessionRenameDialog } from './sidebar/session-rename-dialog'
 import { SessionDeleteDialog } from './sidebar/session-delete-dialog'
 import { SidebarSessions } from './sidebar/sidebar-sessions'
+import { SidebarGroups } from './sidebar/sidebar-groups'
 import type { SessionMeta } from '../types'
+import { usePinnedSessions } from '@/hooks/use-pinned-sessions'
 import {
   TooltipContent,
   TooltipProvider,
@@ -514,6 +516,11 @@ function ChatSidebarComponent({
   )
   const { deleteSession } = useDeleteSession()
   const { renameSession } = useRenameSession()
+  const { pinnedSessionKeys, togglePinnedSession } = usePinnedSessions()
+  const pinnedSessionKeysSet = useMemo(
+    () => new Set(pinnedSessionKeys),
+    [pinnedSessionKeys],
+  )
   const openSearchModal = useSearchModal((state) => state.openModal)
   const isSearchModalOpen = useSearchModal((state) => state.isOpen)
   const pathname = useRouterState({
@@ -1101,6 +1108,18 @@ function ChatSidebarComponent({
                 transition={transition}
                 className="flex flex-col w-full min-h-0 h-full"
               >
+                {/* Session Groups */}
+                <SidebarGroups
+                  sessions={sessions}
+                  activeFriendlyId={activeFriendlyId}
+                  onSelect={onSelectSession}
+                  onRename={handleOpenRename}
+                  onDelete={handleOpenDelete}
+                  onTogglePin={(session) => togglePinnedSession(session.key)}
+                  pinnedSessionKeys={pinnedSessionKeysSet}
+                />
+
+                {/* Ungrouped Sessions */}
                 <div className="flex-1 min-h-0">
                   <SidebarSessions
                     sessions={sessions}
@@ -1112,6 +1131,7 @@ function ChatSidebarComponent({
                     fetching={sessionsFetching}
                     error={sessionsError}
                     onRetry={onRetrySessions}
+                    showGroupedSessions={false}
                   />
                 </div>
               </motion.div>

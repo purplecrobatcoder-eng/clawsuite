@@ -66,6 +66,7 @@ import { useChatActivityStore } from '@/stores/chat-activity-store'
 import { MobileSessionsPanel } from '@/components/mobile-sessions-panel'
 import { MOBILE_TAB_BAR_OFFSET } from '@/components/mobile-tab-bar'
 import { useTapDebug } from '@/hooks/use-tap-debug'
+import { useSessionGroupsStore } from '@/stores/session-groups-store'
 
 type ChatScreenProps = {
   activeFriendlyId: string
@@ -77,6 +78,8 @@ type ChatScreenProps = {
   forcedSessionKey?: string
   /** Hide header + file explorer + terminal for panel mode */
   compact?: boolean
+  /** Group ID for new sessions - applies group context */
+  groupId?: string
 }
 
 function normalizeMessageValue(value: unknown): string {
@@ -141,9 +144,13 @@ export function ChatScreen({
   onSessionResolved,
   forcedSessionKey,
   compact = false,
+  groupId,
 }: ChatScreenProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const groups = useSessionGroupsStore((s) => s.groups)
+  const assignSessionToGroup = useSessionGroupsStore((s) => s.assignSession)
+  const activeGroup = groupId ? groups[groupId] : undefined
   const [sending, setSending] = useState(false)
   const [_creatingSession, setCreatingSession] = useState(false)
   const [sessionsOpen, setSessionsOpen] = useState(false)
@@ -1050,10 +1057,31 @@ export function ChatScreen({
         }),
       )
 
+      // Build group context prefix for new sessions
+      let messageToSend = trimmedBody
+      if (isNewChat && activeGroup) {
+        const contextParts: string[] = []
+        contextParts.push(`[Group Context: ${activeGroup.name}]`)
+        if (activeGroup.workingDirectory) {
+          contextParts.push(`Working directory: ${activeGroup.workingDirectory}`)
+        }
+        if (activeGroup.contextFile) {
+          contextParts.push(
+            `Context file: ${activeGroup.contextFile} (please read this file for project context)`,
+          )
+        }
+        if (activeGroup.customInstructions) {
+          contextParts.push(`\nInstructions:\n${activeGroup.customInstructions}`)
+        }
+        if (contextParts.length > 1) {
+          messageToSend = `${contextParts.join('\n')}\n\n---\n\n${trimmedBody}`
+        }
+      }
+
       if (isNewChat) {
         const threadId = crypto.randomUUID()
         const { optimisticMessage } = createOptimisticMessage(
-          trimmedBody,
+          trimmedBody, // Use original body for optimistic UI
           attachmentPayload,
         )
         appendHistoryMessage(queryClient, threadId, threadId, optimisticMessage)
@@ -1061,6 +1089,11 @@ export function ChatScreen({
         setPendingGeneration(true)
         setSending(true)
         setWaitingForResponse(true)
+
+        // Assign session to group if groupId is present
+        if (groupId) {
+          assignSessionToGroup(threadId, groupId)
+        }
 
         void createSessionForMessage(threadId).catch((err: unknown) => {
           if (import.meta.env.DEV) {
@@ -1074,7 +1107,7 @@ export function ChatScreen({
         sendMessage(
           threadId,
           threadId,
-          trimmedBody,
+          messageToSend, // Use message with group context
           attachmentPayload,
           true,
           typeof optimisticMessage.clientId === 'string'
@@ -1100,10 +1133,13 @@ export function ChatScreen({
       )
     },
     [
+      activeGroup,
       activeFriendlyId,
       activeSessionKey,
+      assignSessionToGroup,
       createSessionForMessage,
       forcedSessionKey,
+      groupId,
       isNewChat,
       navigate,
       onSessionResolved,

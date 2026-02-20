@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { usePinnedSessions } from '@/hooks/use-pinned-sessions'
+import { useSessionGroupsStore } from '@/stores/session-groups-store'
 
 type SidebarSessionsProps = {
   sessions: Array<SessionMeta>
@@ -30,6 +31,8 @@ type SidebarSessionsProps = {
   fetching: boolean
   error: string | null
   onRetry: () => void
+  /** If true, shows all sessions. If false, filters out grouped sessions. */
+  showGroupedSessions?: boolean
 }
 
 export const SidebarSessions = memo(function SidebarSessions({
@@ -43,14 +46,22 @@ export const SidebarSessions = memo(function SidebarSessions({
   fetching,
   error,
   onRetry,
+  showGroupedSessions = false,
 }: SidebarSessionsProps) {
   const { pinnedSessionKeys, togglePinnedSession } = usePinnedSessions()
+  const sessionToGroup = useSessionGroupsStore((s) => s.sessionToGroup)
 
   const [pinnedSessions, unpinnedSessions] = useMemo(() => {
     const pinnedKeys = new Set(pinnedSessionKeys)
     const pinned: Array<SessionMeta> = []
     const unpinned: Array<SessionMeta> = []
+
     for (const session of sessions) {
+      // Filter out grouped sessions unless showGroupedSessions is true
+      if (!showGroupedSessions && sessionToGroup[session.key]) {
+        continue
+      }
+
       if (pinnedKeys.has(session.key)) {
         pinned.push(session)
       } else {
@@ -58,7 +69,7 @@ export const SidebarSessions = memo(function SidebarSessions({
       }
     }
     return [pinned, unpinned] as const
-  }, [pinnedSessionKeys, sessions])
+  }, [pinnedSessionKeys, sessions, sessionToGroup, showGroupedSessions])
 
   function handleTogglePin(session: SessionMeta) {
     togglePinnedSession(session.key)
@@ -146,7 +157,9 @@ export const SidebarSessions = memo(function SidebarSessions({
                 <div className="px-2 py-2 text-xs text-primary-500">
                   {pinnedSessions.length > 0
                     ? 'All sessions are pinned.'
-                    : 'No sessions yet.'}
+                    : sessions.length > 0
+                      ? 'No ungrouped sessions.'
+                      : 'No sessions yet.'}
                 </div>
               )}
               {fetching && !loading && !error && sessions.length > 0 ? (
@@ -178,6 +191,7 @@ function areSidebarSessionsEqual(
   if (prev.fetching !== next.fetching) return false
   if (prev.error !== next.error) return false
   if (prev.onRetry !== next.onRetry) return false
+  if (prev.showGroupedSessions !== next.showGroupedSessions) return false
   if (prev.sessions === next.sessions) return true
   if (prev.sessions.length !== next.sessions.length) return false
   for (let i = 0; i < prev.sessions.length; i += 1) {
